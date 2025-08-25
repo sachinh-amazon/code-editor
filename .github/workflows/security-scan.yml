@@ -75,7 +75,6 @@ jobs:
               --branch="$branch" \
               --json startedAt,conclusion,headBranch \
               --status completed \
-              --jq --arg since "$since_date" \
               '.[] | select(.startedAt > $since and .headBranch == "'$branch'")')
             
             if [ -n "$recent_runs" ]; then
