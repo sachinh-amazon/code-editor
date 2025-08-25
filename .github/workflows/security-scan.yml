@@ -25,24 +25,28 @@ jobs:
           echo "Base branch: $base_ref"
           
           if [[ "$base_ref" =~ ^[0-9]+\.[0-9]+$ ]] || [[ "$base_ref" == "main" ]]; then
-            echo "Base branch matches allowed pattern (main or digit.digit) - proceeding with security scan"
+            echo "Base branch matches allowed pattern (main or digit.digit)"
+            echo "SHOULD_SCAN=true" >> $GITHUB_ENV
           else
             echo "Base branch does not match allowed pattern - skipping security scan"
-            exit 0
+            echo "SHOULD_SCAN=false" >> $GITHUB_ENV
           fi
 
       - name: Checkout destination branch (for workflow)
+        if: env.SHOULD_SCAN == 'true'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.base_ref }}
           
       - name: Checkout PR branch (for scanning)
+        if: env.SHOULD_SCAN == 'true'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref }}
           path: pr-code
 
       - name: Security Scanning Placeholder
+        if: env.SHOULD_SCAN == 'true'
         run: |
           echo "Security Scanning Started"
           echo "Base Branch (workflow source): ${{ github.base_ref }}"
