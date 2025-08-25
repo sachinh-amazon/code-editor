@@ -1,0 +1,105 @@
+name: Security Scanning
+
+on:
+  # Trigger 1: PR created on main or version branches (*.*)
+  pull_request:
+    branches:
+      - main
+      - '[0-9]+.[0-9]+'
+    types: [opened, edited, reopened, synchronize]
+
+  # Trigger 2: Daily scheduled run at 22:00 UTC
+  schedule:
+    - cron: '0 22 * * *'
+
+  # Allow manual triggering for testing
+  workflow_dispatch:
+
+jobs:
+  check-recent-activity:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    outputs:
+      branches-to-scan: ${{ steps.filter-branches.outputs.branches }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get target branches
+        id: get-branches
+        run: |
+          # Get main branch and all version branches (*.*)
+          branches=$(git branch -r | grep -E 'origin/(main|[0-9]+\.[0-9]+)$' | sed 's/origin\///' | tr '\n' ' ')
+          echo "branches=$branches" >> $GITHUB_OUTPUT
+          echo "Found branches: $branches"
+
+      - name: Filter branches based on recent PR activity
+        id: filter-branches
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          branches="${{ steps.get-branches.outputs.branches }}"
+          branches_to_scan=""
+          
+          # Check each branch for PRs created in the last 24 hours
+          for branch in $branches; do
+            echo "Checking branch: $branch"
+            
+            # Get PRs created in the last 24 hours for this branch
+            recent_prs=$(gh pr list \
+              --base "$branch" \
+              --state all \
+              --json createdAt,headRefName \
+              --jq --arg since "$(date -d '24 hours ago' -u +%Y-%m-%dT%H:%M:%SZ)" \
+              '.[] | select(.createdAt > $since)')
+            
+            if [ -n "$recent_prs" ]; then
+              echo "Skipping branch $branch - found recent PR activity in the last 24 hours"
+              echo "Recent PRs: $recent_prs"
+            else
+              echo "Adding branch $branch to scan list - no recent PR activity"
+              branches_to_scan="$branches_to_scan $branch"
+            fi
+          done
+          
+          # Clean up extra spaces and convert to JSON array format
+          branches_to_scan=$(echo $branches_to_scan | xargs)
+          if [ -n "$branches_to_scan" ]; then
+            # Convert space-separated list to JSON array
+            json_branches=$(echo "$branches_to_scan" | tr ' ' '\n' | jq -R . | jq -s .)
+            echo "branches=$json_branches" >> $GITHUB_OUTPUT
+            echo "Branches to scan: $json_branches"
+          else
+            echo "branches=[]" >> $GITHUB_OUTPUT
+            echo "No branches to scan - all have recent PR activity"
+          fi
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: [check-recent-activity]
+    if: |
+      github.event_name == 'pull_request' || 
+      (github.event_name == 'schedule' && needs.check-recent-activity.outputs.branches-to-scan != '[]') ||
+      github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        branch: ${{ github.event_name == 'schedule' && fromJson(needs.check-recent-activity.outputs.branches-to-scan) || fromJson('["current"]') }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'schedule' && matrix.branch || github.ref }}
+
+      - name: Security Scanning Placeholder
+        run: |
+          echo "Security Scanning Started"
+          echo "Branch: ${{ github.event_name == 'schedule' && matrix.branch || github.ref_name }}"
+          echo "Trigger: ${{ github.event_name }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Timestamp: $(date -u)"
+          
+          # Placeholder for actual security scanning logic
+          # This is where you'll add your security scanning tools and commands
+          echo "TODO: Add security scanning implementation"
