@@ -24,6 +24,7 @@ jobs:
 
       - name: Security Scanning Placeholder
         run: |
+          echo "Adding print to state that this workflow is running from branch!!"
           echo "Security Scanning Started"
           echo "Branch: ${{ github.ref_name }}"
           echo "Trigger: ${{ github.event_name }}"
