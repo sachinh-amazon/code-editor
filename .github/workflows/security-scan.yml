@@ -108,7 +108,7 @@ jobs:
           aws cloudwatch put-metric-data \
             --namespace "GitHub/Workflows" \
             --metric-name "SecurityScanInvoked" \
-            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning" \
+            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning,Target=${{ matrix.target }}" \
             --value 1
 
       - name: Analyze SBOM Scan Results
