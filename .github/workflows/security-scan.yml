@@ -21,6 +21,7 @@ jobs:
     steps:
       - name: Validate base branch pattern
         run: |
+          echo "Hi!"
           base_ref="${{ github.base_ref }}"
           echo "Base branch: $base_ref"
           
