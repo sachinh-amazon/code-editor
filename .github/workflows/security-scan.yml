@@ -8,9 +8,9 @@ on:
       - '[0-9]+.[0-9]+'
     types: [opened, edited, reopened, synchronize]
 
-  # Trigger 2: Every 3 minutes on Monday for testing
+  # Trigger 2: Every 5 minutes on Monday for testing
   schedule:
-    - cron: '0/3 * * * 1'
+    - cron: '0/5 * * * 1'
 
 jobs:
   check-recent-workflow-runs:
@@ -52,10 +52,10 @@ jobs:
             recent_runs=$(gh run list \
               --workflow="$workflow_name" \
               --branch="$branch" \
-              --json createdAt,conclusion,headBranch \
+              --json startedAt,conclusion,headBranch \
               --status completed \
               --jq --arg since "$since_date" \
-              '.[] | select(.createdAt > $since and .headBranch == "'$branch'")')
+              '.[] | select(.startedAt > $since and .headBranch == "'$branch'")')
             
             if [ -n "$recent_runs" ]; then
               echo "Skipping branch $branch - found recent workflow run in the last 24 hours"
