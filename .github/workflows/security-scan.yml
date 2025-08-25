@@ -8,16 +8,37 @@ on:
       - '[0-9]+.[0-9]+'
     types: [opened, edited, reopened, synchronize]
 
-  # Trigger 2: Every 5 minutes on Monday for testing
+  # Trigger 2: Daily scheduled run at 22:00 UTC
   schedule:
-    - cron: '0/5 * * * 1'
+    - cron: '0 22 * * *'
+  
+  workflow_dispatch:
 
 jobs:
-  check-recent-workflow-runs:
+  security-scan-pr:
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Security Scanning Placeholder
+        run: |
+          echo "Security Scanning Started"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Trigger: ${{ github.event_name }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Timestamp: $(date -u)"
+          
+          # Placeholder for actual security scanning logic
+          # This is where you'll add your security scanning tools and commands
+          echo "TODO: Add security scanning implementation"
+
+  get-branches-to-scan:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     outputs:
-      branches-to-scan: ${{ steps.filter-branches.outputs.branches }}
+      branches: ${{ steps.filter-branches.outputs.branches }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -78,27 +99,23 @@ jobs:
             echo "No branches to scan - all have recent workflow runs"
           fi
 
-  security-scan:
+  security-scan-scheduled:
     runs-on: ubuntu-latest
-    needs: [check-recent-workflow-runs]
-    if: |
-      always() && (
-        github.event_name == 'pull_request' || 
-        (github.event_name == 'schedule' && needs.check-recent-workflow-runs.result == 'success' && needs.check-recent-workflow-runs.outputs.branches-to-scan != '[]')
-      )
+    needs: [get-branches-to-scan]
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     strategy:
       matrix:
-        branch: ${{ github.event_name == 'schedule' && needs.check-recent-workflow-runs.result == 'success' && fromJson(needs.check-recent-workflow-runs.outputs.branches-to-scan) || fromJson('["current"]') }}
+        branch: ${{ fromJson(needs.get-branches-to-scan.outputs.branches) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'schedule' && needs.check-recent-workflow-runs.result == 'success' && matrix.branch || github.ref }}
+          ref: ${{ matrix.branch }}
 
       - name: Security Scanning Placeholder
         run: |
           echo "Security Scanning Started"
-          echo "Branch: ${{ github.event_name == 'schedule' && needs.check-recent-workflow-runs.result == 'success' && matrix.branch || github.ref_name }}"
+          echo "Branch: ${{ matrix.branch }}"
           echo "Trigger: ${{ github.event_name }}"
           echo "Repository: ${{ github.repository }}"
           echo "Timestamp: $(date -u)"
