@@ -92,76 +92,12 @@ jobs:
       - name: Run Security Scan
         if: env.SHOULD_SCAN == 'true'
         run: |
-          echo "Security Scanning Started"
-          echo "Target: ${{ matrix.target }}"
-          echo "PR Branch (code being scanned): ${{ github.head_ref }}"
-  
-          echo "Generating SBOM"
-          cd code-editor-src
-          # 1.5 Spec Version compatible with Inspector's ScanSbom API. 
-          cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 -o code-editor-sbom.json
-          
-          echo "Invoking Inspector's ScanSbom API"
-          aws inspector-scan scan-sbom --sbom file://code-editor-sbom.json > sbom_scan_result.json
-
-          echo "Publish success metric for Security Scan"
-          aws cloudwatch put-metric-data \
-            --namespace "GitHub/Workflows" \
-            --metric-name "SecurityScanInvoked" \
-            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning,Target=${{ matrix.target }}" \
-            --value 1
+          ./scripts/security-scan.sh run-scan "${{ matrix.target }}" "${{ github.repository }}" "${{ github.head_ref }}"
 
       - name: Analyze SBOM Scan Results
         if: env.SHOULD_SCAN == 'true'
         run: |
-          cd code-editor-src
-          
-          # Check if scan results file exists
-          if [ ! -f "sbom_scan_result.json" ]; then
-            echo "Error: SBOM scan results file not found"
-            exit 1
-          fi
-          
-          # Extract vulnerability counts from the scan results
-          critical=$(jq -r '.sbom.vulnerability_count.critical // 0' sbom_scan_result.json)
-          high=$(jq -r '.sbom.vulnerability_count.high // 0' sbom_scan_result.json)
-          medium=$(jq -r '.sbom.vulnerability_count.medium // 0' sbom_scan_result.json)
-          other=$(jq -r '.sbom.vulnerability_count.other // 0' sbom_scan_result.json)
-          low=$(jq -r '.sbom.vulnerability_count.low // 0' sbom_scan_result.json)
-          
-          echo "=== SBOM Security Scan Results for ${{ matrix.target }} ==="
-          echo "Critical vulnerabilities: $critical"
-          echo "High vulnerabilities: $high"
-          echo "Medium vulnerabilities: $medium"
-          echo "Other vulnerabilities: $other"
-          echo "Low vulnerabilities: $low"
-          echo "=================================================="
-          
-          # Calculate total concerning vulnerabilities (excluding low)
-          total_concerning=$((critical + high + medium + other))
-          
-          if [ $total_concerning -gt 0 ]; then
-            echo "❌ Security scan FAILED: Found $total_concerning concerning vulnerabilities"
-            
-            # Publish failure metric
-            aws cloudwatch put-metric-data \
-              --namespace "GitHub/Workflows" \
-              --metric-name "SecurityScanFailed" \
-              --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning,Target=${{ matrix.target }}" \
-              --value 1
-            
-            exit 1
-          else
-            echo "✅ Security scan PASSED: No concerning vulnerabilities found"
-            echo "Low vulnerabilities: $low (acceptable)"
-            
-            # Publish success metric
-            aws cloudwatch put-metric-data \
-              --namespace "GitHub/Workflows" \
-              --metric-name "SecurityScanPassed" \
-              --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning,Target=${{ matrix.target }}" \
-              --value 1
-          fi
+          ./scripts/security-scan.sh analyze-results "${{ matrix.target }}" "${{ github.repository }}"
       
       - name: Output SBOM
         uses: actions/upload-artifact@v4
