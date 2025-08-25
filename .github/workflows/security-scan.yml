@@ -44,6 +44,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref }}
+      
+      - name: Set up build environment
+        run: |
+          echo "Installing required dependencies"
+          sudo apt-get update
+          sudo apt-get install -y quilt
 
       - name: Run Security Scan
         if: env.SHOULD_SCAN == 'true'
