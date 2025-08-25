@@ -70,12 +70,8 @@ jobs:
             echo "Checking branch: $branch"
             
             # Get recent workflow runs for this specific workflow and branch
-            recent_runs=$(gh run list \
-              --workflow="$workflow_name" \
-              --branch="$branch" \
-              --json startedAt,conclusion,headBranch \
-              --status completed \
-              '.[] | select(.startedAt > $since and .headBranch == "'$branch'")')
+            all_runs=$(gh run list --workflow="$workflow_name" --branch="$branch" --json startedAt,conclusion,headBranch --status success)
+            recent_runs=$(echo "$all_runs" | jq --arg since "$since_date" --arg branch "$branch" '.[] | select(.startedAt > $since and .headBranch == $branch)')
             
             if [ -n "$recent_runs" ]; then
               echo "Skipping branch $branch - found recent workflow run in the last 24 hours"
