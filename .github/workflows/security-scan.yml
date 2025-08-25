@@ -24,6 +24,7 @@ jobs:
     steps:
       - name: Validate base branch pattern
         run: |
+          echo "Hi!"
           # PR trigger won't allow regex matching, it only allows *.*.
           # So we add an additional validation check here.
 
