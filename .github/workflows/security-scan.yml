@@ -5,7 +5,7 @@ on:
   pull_request:
     branches:
       - main
-      - '[0-9]+.[0-9]+'
+      - '*.*'
     types: [opened, edited, reopened, synchronize]
 
   # Trigger 2: Daily scheduled run at 22:00 UTC
@@ -19,19 +19,43 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - name: Checkout repository
+      - name: Validate base branch pattern
+        run: |
+          base_ref="${{ github.base_ref }}"
+          echo "Base branch: $base_ref"
+          
+          if [[ "$base_ref" =~ ^[0-9]+\.[0-9]+$ ]] || [[ "$base_ref" == "main" ]]; then
+            echo "Base branch matches allowed pattern (main or digit.digit) - proceeding with security scan"
+          else
+            echo "Base branch does not match allowed pattern - skipping security scan"
+            exit 0
+          fi
+
+      - name: Checkout destination branch (for workflow)
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.base_ref }}
+          
+      - name: Checkout PR branch (for scanning)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          path: pr-code
 
       - name: Security Scanning Placeholder
         run: |
           echo "Security Scanning Started"
-          echo "Branch: ${{ github.ref_name }}"
+          echo "Base Branch (workflow source): ${{ github.base_ref }}"
+          echo "PR Branch (code being scanned): ${{ github.head_ref }}"
           echo "Trigger: ${{ github.event_name }}"
           echo "Repository: ${{ github.repository }}"
           echo "Timestamp: $(date -u)"
+          echo "Scanning code from: ./pr-code/"
           
-          # Placeholder for actual security scanning logic
-          # This is where you'll add your security scanning tools and commands
+          # The security scanning logic will run from the base branch workflow
+          # but scan the code checked out in ./pr-code/ directory
+          echo "TODO: Add security scanning implementation"
+          echo "Example: scan ./pr-code/ directory for security issues"
           echo "TODO: Add security scanning implementation"
 
   get-branches-to-scan:
