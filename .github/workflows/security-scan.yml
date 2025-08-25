@@ -24,6 +24,7 @@ jobs:
 
       - name: Security Scanning Placeholder
         run: |
+          echo "Hi there!"
           echo "Security Scanning Started"
           echo "Branch: ${{ github.ref_name }}"
           echo "Trigger: ${{ github.event_name }}"
