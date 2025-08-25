@@ -48,6 +48,7 @@ jobs:
       - name: Security Scanning Placeholder
         if: env.SHOULD_SCAN == 'true'
         run: |
+          echo "Hi!"
           echo "Security Scanning Started"
           echo "Base Branch (workflow source): ${{ github.base_ref }}"
           echo "PR Branch (code being scanned): ${{ github.head_ref }}"
