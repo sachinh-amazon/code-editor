@@ -45,11 +45,28 @@ jobs:
           ref: ${{ github.head_ref }}
           submodules: recursive
       
-      - name: Set up build environment
+      - name: Set up environment
         run: |
           echo "Installing required dependencies"
           sudo apt-get update
           sudo apt-get install -y quilt
+
+      - name: Run patches script
+        run: |
+          ./scripts/prepare-src.sh ${{ matrix.build-target }}
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: 'code-editor-src/package-lock.json'
+      
+      - name: Install Code Editor Dependencies
+        run: |
+          cd code-editor-src
+          echo "Installing Dependencies"
+          npm ci
 
       - name: Run Security Scan
         if: env.SHOULD_SCAN == 'true'
@@ -57,13 +74,7 @@ jobs:
           echo "Security Scanning Started"
           echo "Target: ${{ matrix.target }}"
           echo "PR Branch (code being scanned): ${{ github.head_ref }}"
-
-          echo "Preparing source"
-          ./scripts/prepare-src.sh "${{ matrix.target }}"
-
-          echo "Installing node dependencies"
           cd code-editor-src
-          npm ci
           
           echo "Generating SBOM"
           npm sbom --omit dev --sbom-format cyclonedx --sbom-type application > npm_sbom.json
