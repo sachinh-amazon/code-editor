@@ -18,9 +18,15 @@ jobs:
   security-scan-pr:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    strategy:
+      matrix:
+        target: [code-editor-server, code-editor-sagemaker-server, code-editor-web-embedded, code-editor-web-embedded-with-terminal]
     steps:
       - name: Validate base branch pattern
         run: |
+          # PR trigger won't allow regex matching, it only allows *.*.
+          # So we add an additional validation check here.
+
           base_ref="${{ github.base_ref }}"
           echo "Base branch: $base_ref"
           
@@ -31,36 +37,30 @@ jobs:
             echo "Base branch does not match allowed pattern - skipping security scan"
             echo "SHOULD_SCAN=false" >> $GITHUB_ENV
           fi
-
-      - name: Checkout destination branch (for workflow)
-        if: env.SHOULD_SCAN == 'true'
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.base_ref }}
           
-      - name: Checkout PR branch (for scanning)
+      - name: Checkout PR branch
         if: env.SHOULD_SCAN == 'true'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref }}
-          path: pr-code
 
-      - name: Security Scanning Placeholder
+      - name: Run Security Scan
         if: env.SHOULD_SCAN == 'true'
         run: |
           echo "Security Scanning Started"
-          echo "Base Branch (workflow source): ${{ github.base_ref }}"
+          echo "Target: ${{ matrix.target }}"
           echo "PR Branch (code being scanned): ${{ github.head_ref }}"
-          echo "Trigger: ${{ github.event_name }}"
-          echo "Repository: ${{ github.repository }}"
-          echo "Timestamp: $(date -u)"
-          echo "Scanning code from: ./pr-code/"
+
+          echo "Preparing source"
+          ./scripts/prepare-src.sh "${{ matrix.target }}"
+
+          echo "Installing node dependencies"
+          cd code-editor-src
+          npm ci
           
-          # The security scanning logic will run from the base branch workflow
-          # but scan the code checked out in ./pr-code/ directory
-          echo "TODO: Add security scanning implementation"
-          echo "Example: scan ./pr-code/ directory for security issues"
-          echo "TODO: Add security scanning implementation"
+          echo "Generating SBOM"
+          npm sbom --omit dev --sbom-format cyclonedx --sbom-type application > npm_sbom.json
+          cat npm_sbom.json
 
   get-branches-to-scan:
     runs-on: ubuntu-latest
