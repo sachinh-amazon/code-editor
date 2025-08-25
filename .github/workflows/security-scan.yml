@@ -75,11 +75,14 @@ jobs:
           echo "Security Scanning Started"
           echo "Target: ${{ matrix.target }}"
           echo "PR Branch (code being scanned): ${{ github.head_ref }}"
-          cd code-editor-src
+
+          echo "Installing CycloneDX SBOM for npm"
+          npm i -g @cyclonedx/cyclonedx-npm
           
           echo "Generating SBOM"
-          npm sbom --omit dev --sbom-format cyclonedx --sbom-type application > npm_sbom.json
-          cat npm_sbom.json
+          cd code-editor-src
+          cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 -o scan_sbom.json
+          cat scan_sbom.json
 
   get-branches-to-scan:
     runs-on: ubuntu-latest
