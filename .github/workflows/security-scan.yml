@@ -75,6 +75,7 @@ jobs:
           cd code-editor-src
           echo "Installing Dependencies"
           npm ci
+          npm install tar-fs@2.0.0
       
       - name: Install Security Scan Dependencies
         if: env.SHOULD_SCAN == 'true'
@@ -88,7 +89,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
-          aws-region: us-east-1
+          aws-region: us-east-1     
 
       - name: Run Security Scan
         if: env.SHOULD_SCAN == 'true'
