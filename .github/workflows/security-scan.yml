@@ -49,16 +49,19 @@ jobs:
           submodules: recursive
       
       - name: Set up environment
+        if: env.SHOULD_SCAN == 'true'
         run: |
           echo "Installing required dependencies"
           sudo apt-get update
           sudo apt-get install -y quilt libkrb5-dev libx11-dev libxkbfile-dev libxml2-utils
 
       - name: Run patches script
+        if: env.SHOULD_SCAN == 'true'
         run: |
           ./scripts/prepare-src.sh ${{ matrix.build-target }}
       
       - name: Set up Node.js
+        if: env.SHOULD_SCAN == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -66,17 +69,20 @@ jobs:
           cache-dependency-path: 'code-editor-src/package-lock.json'
       
       - name: Install Code Editor Dependencies
+        if: env.SHOULD_SCAN == 'true'
         run: |
           cd code-editor-src
           echo "Installing Dependencies"
           npm ci
       
       - name: Install Security Scan Dependencies
+        if: env.SHOULD_SCAN == 'true'
         run: |
           echo "Installing CycloneDX SBOM for npm"
           npm i -g @cyclonedx/cyclonedx-npm
       
       - name: Assume IAM Role
+        if: env.SHOULD_SCAN == 'true'
         id: assume-aws-iam-role
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -101,9 +107,61 @@ jobs:
           echo "Publish success metric for Security Scan"
           aws cloudwatch put-metric-data \
             --namespace "GitHub/Workflows" \
-            --metric-name "ScanComplete" \
+            --metric-name "SecurityScanInvoked" \
             --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning" \
             --value 1
+
+      - name: Analyze SBOM Scan Results
+        if: env.SHOULD_SCAN == 'true'
+        run: |
+          cd code-editor-src
+          
+          # Check if scan results file exists
+          if [ ! -f "sbom_scan_result.json" ]; then
+            echo "Error: SBOM scan results file not found"
+            exit 1
+          fi
+          
+          # Extract vulnerability counts from the scan results
+          critical=$(jq -r '.sbom.vulnerability_count.critical // 0' sbom_scan_result.json)
+          high=$(jq -r '.sbom.vulnerability_count.high // 0' sbom_scan_result.json)
+          medium=$(jq -r '.sbom.vulnerability_count.medium // 0' sbom_scan_result.json)
+          other=$(jq -r '.sbom.vulnerability_count.other // 0' sbom_scan_result.json)
+          low=$(jq -r '.sbom.vulnerability_count.low // 0' sbom_scan_result.json)
+          
+          echo "=== SBOM Security Scan Results for ${{ matrix.target }} ==="
+          echo "Critical vulnerabilities: $critical"
+          echo "High vulnerabilities: $high"
+          echo "Medium vulnerabilities: $medium"
+          echo "Other vulnerabilities: $other"
+          echo "Low vulnerabilities: $low"
+          echo "=================================================="
+          
+          # Calculate total concerning vulnerabilities (excluding low)
+          total_concerning=$((critical + high + medium + other))
+          
+          if [ $total_concerning -gt 0 ]; then
+            echo "❌ Security scan FAILED: Found $total_concerning concerning vulnerabilities"
+            
+            # Publish failure metric
+            aws cloudwatch put-metric-data \
+              --namespace "GitHub/Workflows" \
+              --metric-name "SecurityScanFailed" \
+              --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning,Target=${{ matrix.target }}" \
+              --value 1
+            
+            exit 1
+          else
+            echo "✅ Security scan PASSED: No concerning vulnerabilities found"
+            echo "Low vulnerabilities: $low (acceptable)"
+            
+            # Publish success metric
+            aws cloudwatch put-metric-data \
+              --namespace "GitHub/Workflows" \
+              --metric-name "SecurityScanPassed" \
+              --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning,Target=${{ matrix.target }}" \
+              --value 1
+          fi
       
       - name: Output SBOM
         uses: actions/upload-artifact@v4
