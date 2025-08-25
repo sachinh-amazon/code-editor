@@ -18,6 +18,9 @@ jobs:
   security-scan-pr:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    environment: security-scanning-workflow-env
+    permissions:
+      id-token: write # Required for OIDC
     strategy:
       matrix:
         target: [code-editor-sagemaker-server]
@@ -67,6 +70,18 @@ jobs:
           cd code-editor-src
           echo "Installing Dependencies"
           npm ci
+      
+      - name: Install Security Scan Dependencies
+        run: |
+          echo "Installing CycloneDX SBOM for npm"
+          npm i -g @cyclonedx/cyclonedx-npm
+      
+      - name: Assume IAM Role
+        id: assume-aws-iam-role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
+          aws-region: us-east-1
 
       - name: Run Security Scan
         if: env.SHOULD_SCAN == 'true'
@@ -74,14 +89,35 @@ jobs:
           echo "Security Scanning Started"
           echo "Target: ${{ matrix.target }}"
           echo "PR Branch (code being scanned): ${{ github.head_ref }}"
-
-          echo "Installing CycloneDX SBOM for npm"
-          npm i -g @cyclonedx/cyclonedx-npm
-          
+  
           echo "Generating SBOM"
           cd code-editor-src
-          cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 -o scan_sbom.json
-          cat scan_sbom.json
+          # 1.5 Spec Version compatible with Inspector's ScanSbom API. 
+          cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 -o code-editor-sbom.json
+          
+          echo "Invoking Inspector's ScanSbom API"
+          aws inspector-scan scan-sbom --sbom file://code-editor-sbom.json > sbom_scan_result.json
+
+          echo "Publish success metric for Security Scan"
+          aws cloudwatch put-metric-data \
+            --namespace "GitHub/Workflows" \
+            --metric-name "ScanComplete" \
+            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning" \
+            --value 1
+      
+      - name: Output SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-editor-sbom.json
+          path: code-editor-src/code-editor-sbom.json
+          retention-days: 90
+    
+      - name: Output Scan Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom_scan_result.json
+          path: code-editor-src/sbom_scan_result.json
+          retention-days: 90
 
   get-branches-to-scan:
     runs-on: ubuntu-latest
