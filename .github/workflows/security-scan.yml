@@ -8,12 +8,9 @@ on:
       - '[0-9]+.[0-9]+'
     types: [opened, edited, reopened, synchronize]
 
-  # Trigger 2: Daily scheduled run at 22:00 UTC
+  # Trigger 2: Every 5 minutes on Monday for testing
   schedule:
-    - cron: '0 22 * * *'
-
-  # Allow manual triggering for testing
-  workflow_dispatch:
+    - cron: '*/5 * * * 1'
 
 jobs:
   check-recent-workflow-runs:
@@ -84,22 +81,23 @@ jobs:
     runs-on: ubuntu-latest
     needs: [check-recent-workflow-runs]
     if: |
-      github.event_name == 'pull_request' || 
-      (github.event_name == 'schedule' && needs.check-recent-workflow-runs.outputs.branches-to-scan != '[]') ||
-      github.event_name == 'workflow_dispatch'
+      always() && (
+        github.event_name == 'pull_request' || 
+        (github.event_name == 'schedule' && needs.check-recent-workflow-runs.result == 'success' && needs.check-recent-workflow-runs.outputs.branches-to-scan != '[]')
+      )
     strategy:
       matrix:
-        branch: ${{ github.event_name == 'schedule' && fromJson(needs.check-recent-workflow-runs.outputs.branches-to-scan) || fromJson('["current"]') }}
+        branch: ${{ github.event_name == 'schedule' && needs.check-recent-workflow-runs.result == 'success' && fromJson(needs.check-recent-workflow-runs.outputs.branches-to-scan) || fromJson('["current"]') }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'schedule' && matrix.branch || github.ref }}
+          ref: ${{ github.event_name == 'schedule' && needs.check-recent-workflow-runs.result == 'success' && matrix.branch || github.ref }}
 
       - name: Security Scanning Placeholder
         run: |
           echo "Security Scanning Started"
-          echo "Branch: ${{ github.event_name == 'schedule' && matrix.branch || github.ref_name }}"
+          echo "Branch: ${{ github.event_name == 'schedule' && needs.check-recent-workflow-runs.result == 'success' && matrix.branch || github.ref_name }}"
           echo "Trigger: ${{ github.event_name }}"
           echo "Repository: ${{ github.repository }}"
           echo "Timestamp: $(date -u)"
