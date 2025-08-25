@@ -85,8 +85,8 @@ jobs:
           # Clean up extra spaces and convert to JSON array format
           branches_to_scan=$(echo $branches_to_scan | xargs)
           if [ -n "$branches_to_scan" ]; then
-            # Convert space-separated list to JSON array
-            json_branches=$(echo "$branches_to_scan" | tr ' ' '\n' | jq -R . | jq -s .)
+            # Convert space-separated list to JSON array (compact format)
+            json_branches=$(echo "$branches_to_scan" | tr ' ' '\n' | jq -R . | jq -s -c .)
             echo "branches=$json_branches" >> $GITHUB_OUTPUT
             echo "Branches to scan: $json_branches"
           else
