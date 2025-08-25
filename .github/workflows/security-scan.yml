@@ -94,11 +94,6 @@ jobs:
         run: |
           ./scripts/security-scan.sh run-scan "${{ matrix.target }}" "${{ github.repository }}" "${{ github.head_ref }}"
 
-      - name: Analyze SBOM Scan Results
-        if: env.SHOULD_SCAN == 'true'
-        run: |
-          ./scripts/security-scan.sh analyze-results "${{ matrix.target }}" "${{ github.repository }}"
-      
       - name: Output SBOM
         uses: actions/upload-artifact@v4
         with:
@@ -112,6 +107,11 @@ jobs:
           name: sbom_scan_result.json
           path: code-editor-src/sbom_scan_result.json
           retention-days: 90
+
+      - name: Analyze SBOM Scan Results
+        if: env.SHOULD_SCAN == 'true'
+        run: |
+          ./scripts/security-scan.sh analyze-results "${{ matrix.target }}" "${{ github.repository }}"
 
   get-branches-to-scan:
     runs-on: ubuntu-latest
