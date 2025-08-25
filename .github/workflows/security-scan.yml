@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  check-recent-activity:
+  check-recent-workflow-runs:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule'
     outputs:
@@ -35,31 +35,35 @@ jobs:
           echo "branches=$branches" >> $GITHUB_OUTPUT
           echo "Found branches: $branches"
 
-      - name: Filter branches based on recent PR activity
+      - name: Filter branches based on recent workflow runs
         id: filter-branches
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           branches="${{ steps.get-branches.outputs.branches }}"
           branches_to_scan=""
+          workflow_name="Security Scanning"
+          since_date=$(date -d '24 hours ago' -u +%Y-%m-%dT%H:%M:%SZ)
           
-          # Check each branch for PRs created in the last 24 hours
+          echo "Checking for workflow runs since: $since_date"
+          
+          # Check each branch for recent workflow runs
           for branch in $branches; do
             echo "Checking branch: $branch"
             
-            # Get PRs created in the last 24 hours for this branch
-            recent_prs=$(gh pr list \
-              --base "$branch" \
-              --state all \
-              --json createdAt,headRefName \
-              --jq --arg since "$(date -d '24 hours ago' -u +%Y-%m-%dT%H:%M:%SZ)" \
-              '.[] | select(.createdAt > $since)')
+            # Get recent workflow runs for this specific workflow and branch
+            recent_runs=$(gh run list \
+              --workflow="$workflow_name" \
+              --branch="$branch" \
+              --json createdAt,conclusion,headBranch \
+              --jq --arg since "$since_date" \
+              '.[] | select(.createdAt > $since and .headBranch == "'$branch'")')
             
-            if [ -n "$recent_prs" ]; then
-              echo "Skipping branch $branch - found recent PR activity in the last 24 hours"
-              echo "Recent PRs: $recent_prs"
+            if [ -n "$recent_runs" ]; then
+              echo "Skipping branch $branch - found recent workflow run in the last 24 hours"
+              echo "Recent runs: $recent_runs"
             else
-              echo "Adding branch $branch to scan list - no recent PR activity"
+              echo "Adding branch $branch to scan list - no recent workflow runs"
               branches_to_scan="$branches_to_scan $branch"
             fi
           done
@@ -73,19 +77,19 @@ jobs:
             echo "Branches to scan: $json_branches"
           else
             echo "branches=[]" >> $GITHUB_OUTPUT
-            echo "No branches to scan - all have recent PR activity"
+            echo "No branches to scan - all have recent workflow runs"
           fi
 
   security-scan:
     runs-on: ubuntu-latest
-    needs: [check-recent-activity]
+    needs: [check-recent-workflow-runs]
     if: |
       github.event_name == 'pull_request' || 
-      (github.event_name == 'schedule' && needs.check-recent-activity.outputs.branches-to-scan != '[]') ||
+      (github.event_name == 'schedule' && needs.check-recent-workflow-runs.outputs.branches-to-scan != '[]') ||
       github.event_name == 'workflow_dispatch'
     strategy:
       matrix:
-        branch: ${{ github.event_name == 'schedule' && fromJson(needs.check-recent-activity.outputs.branches-to-scan) || fromJson('["current"]') }}
+        branch: ${{ github.event_name == 'schedule' && fromJson(needs.check-recent-workflow-runs.outputs.branches-to-scan) || fromJson('["current"]') }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
