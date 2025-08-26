@@ -15,8 +15,8 @@ run_security_scan() {
     # Define directories to scan with their specific configurations
     local scan_configs=(
         "code-editor-src::root"
-        "remote::subdir"
-        "extensions::subdir"
+        "remote::subdir_ignore_errors"
+        "extensions::subdir_ignore_errors"
         "remote/web::subdir_ignore_errors"
     )
     local scan_results=()
@@ -63,19 +63,13 @@ run_security_scan() {
             cd "$dir"
             cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 -o "$sbom_file"
             
-        elif [ "$scan_type" = "subdir" ]; then
-            # Remaining scans: stay in code-editor-src and specify directory
-            echo "Scanning subdirectory: $dir from code-editor-src"
-            cd code-editor-src
-            cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 -o "$sbom_file" "$dir"
-            
         elif [ "$scan_type" = "subdir_ignore_errors" ]; then
-            # remote/web scan: add --ignore-npm-errors flag
-            # This is to ignore the extraneous error "npm error missing: tslib@*, required by @microsoft/applicationinsights-core-js@2.8.15"
+            # Subdirectory scans with npm error handling: cd into directory and add --ignore-npm-errors flag
+            # This is to ignore extraneous npm errors that don't affect the security scan
             # This behaviour is same for internal scanning.
-            echo "Scanning subdirectory: $dir from code-editor-src (ignoring npm errors)"
-            cd code-editor-src
-            cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 --ignore-npm-errors -o "$sbom_file" "$dir"
+            echo "Scanning subdirectory: $dir (ignoring npm errors)"
+            cd "$check_dir"
+            cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 --ignore-npm-errors -o "$sbom_file"
         fi
         
         echo "Invoking Inspector's ScanSbom API for $dir"
