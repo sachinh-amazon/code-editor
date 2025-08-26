@@ -96,7 +96,7 @@ jobs:
       id-token: write # Required for OIDC
     strategy:
       matrix:
-        target: [code-editor-sagemaker-server]
+        target: [code-editor-server, code-editor-sagemaker-server, code-editor-web-embedded, code-editor-web-embedded-with-terminal]
         branch: ${{ fromJson(needs.get-branches-to-scan.outputs.branches) }}
     steps:
       - name: Assume IAM Role
