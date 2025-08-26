@@ -375,8 +375,6 @@ scan_github_advisories() {
     
     # Process advisories
     local concerning_advisories=0
-    local advisory_count_file=$(mktemp)
-    echo "0" > "$advisory_count_file"
     
     echo ""
     echo "=== GITHUB SECURITY ADVISORIES ANALYSIS ==="
@@ -452,7 +450,7 @@ scan_github_advisories() {
     echo "=================================================="
     
     # Clean up temp files
-    rm -f "$temp_file" "$advisory_results"
+    rm -f "$temp_file"
     
     # Determine if we should fail based on concerning advisories
     if [ "$concerning_advisories" -gt 0 ]; then
