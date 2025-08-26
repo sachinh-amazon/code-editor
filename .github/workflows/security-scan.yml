@@ -115,7 +115,7 @@ jobs:
           aws cloudwatch put-metric-data \
             --namespace "GitHub/Workflows" \
             --metric-name "SecurityScanInvoked" \
-            --dimensions "Repository=$repository,Workflow=SecurityScanning" \
+            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning" \
             --value 1
           
       - name: Checkout branch
@@ -173,7 +173,7 @@ jobs:
 
       - name: Run Security Scan
         run: |
-          ./scripts/security-scan.sh scan-main-dependencies "${{ matrix.target }}" "${{ github.repository }}" "${{ matrix.branch }}"
+          ./scripts/security-scan.sh scan-main-dependencies "${{ matrix.target }}" "${{ matrix.branch }}"
       
       - name: Upload SBOM Files
         uses: actions/upload-artifact@v4
@@ -201,7 +201,7 @@ jobs:
 
       - name: Analyze SBOM Scan Results
         run: |
-          ./scripts/security-scan.sh analyze-results "${{ matrix.target }}" "${{ github.repository }}" "scan_results_paths.txt"
+          ./scripts/security-scan.sh analyze-results "${{ matrix.target }}" "scan_results_paths.txt"
 
       - name: Prepare Additional Node JS Dependencies for Scanning
         run: |
@@ -225,14 +225,14 @@ jobs:
 
       - name: Analyze Additional SBOM Scan Results
         run: |
-          ./scripts/security-scan.sh analyze-results "${{ matrix.target }}" "${{ github.repository }}" "additional_scan_results_paths.txt"
+          ./scripts/security-scan.sh analyze-results "${{ matrix.target }}" "additional_scan_results_paths.txt"
 
       - name: Publish Scan Successful Metric
         run: |
           aws cloudwatch put-metric-data \
             --namespace "GitHub/Workflows" \
             --metric-name "SecurityScanSuccessful" \
-            --dimensions "Repository=$repository,Workflow=SecurityScanning" \
+            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning" \
             --value 1
 
       - name: Publish Failure Metrics
