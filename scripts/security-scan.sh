@@ -334,8 +334,7 @@ scan_github_advisories() {
     
     local repo_owner="microsoft"
     local repo_name="vscode"
-    # local vscode_version=$(jq -r '.version' third-party-src/package.json)
-    local vscode_version="1.95.0"
+    local vscode_version=$(jq -r '.version' third-party-src/package.json)
     
     echo "Found VS Code version: $vscode_version"
     
