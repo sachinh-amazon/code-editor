@@ -406,7 +406,18 @@ scan_github_advisories() {
         local vulnerable_ranges=$(echo "$advisory" | jq -r '.vulnerabilities[].vulnerable_version_range // empty')
         
         if [ -n "$vulnerable_ranges" ]; then
-            echo "$vulnerable_ranges" | while read -r vulnerable_range; do
+            # Process each vulnerable range
+            local ranges_array=()
+            
+            # Convert vulnerable ranges to array
+            while IFS= read -r range; do
+                if [ -n "$range" ]; then
+                    ranges_array+=("$range")
+                fi
+            done <<< "$vulnerable_ranges"
+            
+            # Check each range
+            for vulnerable_range in "${ranges_array[@]}"; do
                 echo "Vulnerable versions: $vulnerable_range"
                 
                 # Use semver range to check if current version is in the vulnerable range
