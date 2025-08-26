@@ -12,27 +12,39 @@ run_security_scan() {
     echo "Target: $target"
     echo "PR Branch (code being scanned): $head_ref"
 
-    # Define directories to scan
-    local scan_dirs=(
-        "code-editor-src" 
-        "code-editor-src/remote" 
-        "code-editor-src/extensions" 
-        "code-editor-src/remote/web"
+    # Define directories to scan with their specific configurations
+    local scan_configs=(
+        "code-editor-src::root"
+        "remote::subdir"
+        "extensions::subdir"
+        "remote/web::subdir_ignore_errors"
     )
     local scan_results=()
     
     # Scan each directory
-    for dir in "${scan_dirs[@]}"; do
+    for config in "${scan_configs[@]}"; do
+        local dir=$(echo "$config" | cut -d':' -f1)
+        local scan_type=$(echo "$config" | cut -d':' -f3)
+        
         echo "=== Scanning directory: $dir ==="
         
+        # For the first scan (code-editor-src), we need to check the root directory
+        # For others, we need to check subdirectories within code-editor-src
+        local check_dir
+        if [ "$scan_type" = "root" ]; then
+            check_dir="$dir"
+        else
+            check_dir="code-editor-src/$dir"
+        fi
+        
         # Check if directory exists and has package-lock.json
-        if [ ! -d "$dir" ]; then
-            echo "Warning: Directory $dir does not exist, skipping..."
+        if [ ! -d "$check_dir" ]; then
+            echo "Warning: Directory $check_dir does not exist, skipping..."
             continue
         fi
         
-        if [ ! -f "$dir/package-lock.json" ]; then
-            echo "Warning: No package-lock.json found in $dir, skipping..."
+        if [ ! -f "$check_dir/package-lock.json" ]; then
+            echo "Warning: No package-lock.json found in $check_dir, skipping..."
             continue
         fi
         
@@ -44,14 +56,34 @@ run_security_scan() {
         local sbom_file="${safe_dir_name}-sbom.json"
         local result_file="${safe_dir_name}-scan-result.json"
         
-        # 1.5 Spec Version compatible with Inspector's ScanSbom API
-        cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 -o "$sbom_file" "$dir"
+        # Handle different scan types
+        if [ "$scan_type" = "root" ]; then
+            # First scan: cd into code-editor-src and run scan there
+            echo "Scanning root directory: $dir"
+            cd "$dir"
+            cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 -o "$sbom_file"
+            
+        elif [ "$scan_type" = "subdir" ]; then
+            # Remaining scans: stay in code-editor-src and specify directory
+            echo "Scanning subdirectory: $dir from code-editor-src"
+            cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 -o "$sbom_file" "$dir"
+            
+        elif [ "$scan_type" = "subdir_ignore_errors" ]; then
+            # remote/web scan: add --ignore-npm-errors flag
+            # This is to ignore the extraneous error "npm error missing: tslib@*, required by @microsoft/applicationinsights-core-js@2.8.15"
+            # This behaviour is same for internal scanning.
+            echo "Scanning subdirectory: $dir from code-editor-src (ignoring npm errors)"
+            cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 --ignore-npm-errors -o "$sbom_file" "$dir"
+        fi
         
         echo "Invoking Inspector's ScanSbom API for $dir"
         aws inspector-scan scan-sbom --sbom "file://$sbom_file" > "$result_file"
         
         # Store the result file path for later analysis
         scan_results+=("$PWD/$result_file")
+        
+        # Return to root directory for next iteration
+        cd - > /dev/null
         
         echo "Completed scan for $dir"
     done
