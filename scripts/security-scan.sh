@@ -119,10 +119,11 @@ generate_additional_sboms() {
     echo "Generating SBOM for Node.js linux-x64 binary"
     
     # Read Node.js version from .npmrc file
-    if [ -f "code-editor-src/remote/.npmrc" ]; then
+    if [ -f "third-party-src/remote/.npmrc" ]; then
         NODE_VERSION=$(grep 'target=' code-editor-src/remote/.npmrc | cut -d'"' -f2)
     else
-        NODE_VERSION="22.15.1"  # fallback version
+        echo "ERROR: No .npmrc file found"
+        exit 1
     fi
     
     node_x64_dir="nodejs-binaries/node-v$NODE_VERSION-linux-x64"
