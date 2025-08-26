@@ -38,7 +38,6 @@ run_security_scan() {
         
         # Generate SBOM for this directory
         echo "Generating SBOM for $dir"
-        cd "$dir"
         
         # Create a safe filename for the SBOM
         local safe_dir_name=$(echo "$dir" | sed 's/\//_/g')
@@ -46,16 +45,13 @@ run_security_scan() {
         local result_file="${safe_dir_name}-scan-result.json"
         
         # 1.5 Spec Version compatible with Inspector's ScanSbom API
-        cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 -o "$sbom_file"
+        cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 -o "$sbom_file" "$dir"
         
         echo "Invoking Inspector's ScanSbom API for $dir"
         aws inspector-scan scan-sbom --sbom "file://$sbom_file" > "$result_file"
         
         # Store the result file path for later analysis
         scan_results+=("$PWD/$result_file")
-        
-        # Return to root directory
-        cd - > /dev/null
         
         echo "Completed scan for $dir"
     done
