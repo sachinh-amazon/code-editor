@@ -437,6 +437,7 @@ scan_github_advisories() {
         # Advisory is concerning if BOTH conditions are met:
         # 1. Version is affected AND 2. Severity is moderate/high/critical
         if [ "$is_version_affected" = true ] && ([ "$severity" = "moderate" ] || [ "$severity" = "high" ] || [ "$severity" = "critical" ]); then
+            echo "Incrementing count"
             concerning_advisories=$((concerning_advisories + 1))
         fi
         
