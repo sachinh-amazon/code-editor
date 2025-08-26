@@ -151,6 +151,9 @@ jobs:
           name: sbom-files-${{ matrix.target }}-${{ matrix.branch }}
           path: |
             code-editor-src/*-sbom.json
+            code-editor-src/remote/*-sbom.json
+            code-editor-src/extensions/*-sbom.json
+            code-editor-src/remote/web/*-sbom.json
           retention-days: 90
     
       - name: Upload Scan Result Files
@@ -159,6 +162,9 @@ jobs:
           name: scan-results-${{ matrix.target }}-${{ matrix.branch }}
           path: |
             code-editor-src/*-scan-result.json
+            code-editor-src/remote/*-scan-result.json
+            code-editor-src/extensions/*-scan-result.json
+            code-editor-src/remote/web/*-scan-result.json
           retention-days: 90
 
       - name: Analyze SBOM Scan Results
