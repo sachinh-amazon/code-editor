@@ -82,9 +82,6 @@ run_security_scan() {
         # Store the result file path for later analysis
         scan_results+=("$PWD/$result_file")
         
-        # Return to root directory for next iteration
-        cd - > /dev/null
-        
         echo "Completed scan for $dir"
     done
     
