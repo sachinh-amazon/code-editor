@@ -99,6 +99,14 @@ jobs:
         target: [code-editor-sagemaker-server]
         branch: ${{ fromJson(needs.get-branches-to-scan.outputs.branches) }}
     steps:
+      - name: Assume IAM Role
+        id: assume-aws-iam-role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
+          aws-region: us-east-1
+          role-session-name: security-scan-${{ matrix.target }}-${{ matrix.branch }}
+          
       - name: Checkout branch
         uses: actions/checkout@v4
         with:
@@ -132,14 +140,6 @@ jobs:
         run: |
           echo "Installing CycloneDX SBOM for npm"
           npm i -g @cyclonedx/cyclonedx-npm
-
-      - name: Assume IAM Role
-        id: assume-aws-iam-role
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
-          aws-region: us-east-1
-          role-session-name: security-scan-${{ matrix.target }}-${{ matrix.branch }}
 
       - name: Run Security Scan
         run: |
