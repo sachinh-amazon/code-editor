@@ -40,6 +40,15 @@ jobs:
             echo "Base branch does not match allowed pattern - skipping security scan"
             echo "SHOULD_SCAN=false" >> $GITHUB_ENV
           fi
+      
+      - name: Assume IAM Role
+        if: env.SHOULD_SCAN == 'true'
+        id: assume-aws-iam-role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
+          aws-region: us-east-1
+          role-session-name: publish-metrics
           
       - name: Checkout PR branch
         if: env.SHOULD_SCAN == 'true'
@@ -80,38 +89,52 @@ jobs:
         run: |
           echo "Installing CycloneDX SBOM for npm"
           npm i -g @cyclonedx/cyclonedx-npm
-      
-      - name: Assume IAM Role
-        if: env.SHOULD_SCAN == 'true'
-        id: assume-aws-iam-role
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
-          aws-region: us-east-1
 
       - name: Run Security Scan
         if: env.SHOULD_SCAN == 'true'
         run: |
           ./scripts/security-scan.sh run-scan "${{ matrix.target }}" "${{ github.repository }}" "${{ github.head_ref }}"
 
-      - name: Output SBOM
+      - name: Upload SBOM Files
+        if: env.SHOULD_SCAN == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: code-editor-sbom.json
-          path: code-editor-src/code-editor-sbom.json
+          name: sbom-files-${{ matrix.target }}
+          path: |
+            code-editor-src/*-sbom.json
+            code-editor-src/remote/*-sbom.json
+            code-editor-src/extensions/*-sbom.json
+            code-editor-src/remote/web/*-sbom.json
           retention-days: 90
     
-      - name: Output Scan Results
+      - name: Upload Scan Result Files
+        if: env.SHOULD_SCAN == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: sbom_scan_result.json
-          path: code-editor-src/sbom_scan_result.json
+          name: scan-results-${{ matrix.target }}
+          path: |
+            code-editor-src/*-scan-result.json
+            code-editor-src/remote/*-scan-result.json
+            code-editor-src/extensions/*-scan-result.json
+            code-editor-src/remote/web/*-scan-result.json
           retention-days: 90
-
+      
       - name: Analyze SBOM Scan Results
         if: env.SHOULD_SCAN == 'true'
         run: |
           ./scripts/security-scan.sh analyze-results "${{ matrix.target }}" "${{ github.repository }}"
+
+      - name: Publish Failure Metrics
+        if: failure()
+        run: |
+          echo "Job failed - publishing failure metrics"
+          
+          # Publish workflow failure metric
+          aws cloudwatch put-metric-data \
+            --namespace "GitHub/Workflows" \
+            --metric-name "SecurityScanFailed" \
+            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning \
+            --value 1
 
   get-branches-to-scan:
     runs-on: ubuntu-latest

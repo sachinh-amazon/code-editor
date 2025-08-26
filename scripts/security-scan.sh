@@ -67,7 +67,7 @@ run_security_scan() {
     aws cloudwatch put-metric-data \
         --namespace "GitHub/Workflows" \
         --metric-name "SecurityScanInvoked" \
-        --dimensions "Repository=$repository,Workflow=SecurityScanning,Target=$target" \
+        --dimensions "Repository=$repository,Workflow=SecurityScanning" \
         --value 1
 }
 
@@ -152,7 +152,7 @@ analyze_sbom_results() {
         aws cloudwatch put-metric-data \
             --namespace "GitHub/Workflows" \
             --metric-name "SecurityScanFailed" \
-            --dimensions "Repository=$repository,Workflow=SecurityScanning,Target=$target" \
+            --dimensions "Repository=$repository,Workflow=SecurityScanning" \
             --value 1
         
         exit 1
@@ -164,7 +164,7 @@ analyze_sbom_results() {
         aws cloudwatch put-metric-data \
             --namespace "GitHub/Workflows" \
             --metric-name "SecurityScanPassed" \
-            --dimensions "Repository=$repository,Workflow=SecurityScanning,Target=$target" \
+            --dimensions "Repository=$repository,Workflow=SecurityScanning" \
             --value 1
     fi
 }
