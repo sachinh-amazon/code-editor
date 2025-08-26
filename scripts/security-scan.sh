@@ -375,13 +375,18 @@ scan_github_advisories() {
     
     # Process advisories
     local concerning_advisories=0
-    local advisory_results=$(mktemp)
+    local advisory_count_file=$(mktemp)
+    echo "0" > "$advisory_count_file"
     
     echo ""
     echo "=== GITHUB SECURITY ADVISORIES ANALYSIS ==="
     
-    # Extract and analyze each advisory
-    jq -c '.[]' "$temp_file" | while read -r advisory; do
+    # Process each advisory
+    local advisory_index=0
+    local total_advisories_count=$(jq length "$temp_file")
+    
+    while [ $advisory_index -lt $total_advisories_count ]; do
+        local advisory=$(jq -c ".[$advisory_index]" "$temp_file")
         local ghsa_id=$(echo "$advisory" | jq -r '.ghsa_id // "N/A"')
         local cve_id=$(echo "$advisory" | jq -r '.cve_id // "N/A"')
         local severity=$(echo "$advisory" | jq -r '.severity // "unknown"')
@@ -395,46 +400,39 @@ scan_github_advisories() {
         echo "Published: $published_at"
         echo "Summary: $summary"
         
+        local is_version_affected=false
+        
         # Check if current version is affected using semver
-        # Extract all vulnerable version ranges for this advisory
-        echo "$advisory" | jq -r '.vulnerabilities[].vulnerable_version_range // empty' | while read -r vulnerable_range; do
-            if [ -n "$vulnerable_range" ]; then
+        local vulnerable_ranges=$(echo "$advisory" | jq -r '.vulnerabilities[].vulnerable_version_range // empty')
+        
+        if [ -n "$vulnerable_ranges" ]; then
+            echo "$vulnerable_ranges" | while read -r vulnerable_range; do
                 echo "Vulnerable versions: $vulnerable_range"
                 
                 # Use semver range to check if current version is in the vulnerable range
                 if semver --range "$vulnerable_range" "$vscode_version" >/dev/null 2>&1; then
                     echo "⚠️  Version $vscode_version is affected by this advisory (in range: $vulnerable_range)"
-                    echo "1" > /tmp/is_affected_$$
+                    is_version_affected=true
                 else
                     echo "✅ Version $vscode_version is not in vulnerable range: $vulnerable_range"
                 fi
-            fi
-        done
-        
-        # Check if any range matched (since the while loop runs in a subshell)
-        if [ -f "/tmp/is_affected_$$" ]; then
-            concerning_advisories=$((concerning_advisories + 1))
-            rm -f "/tmp/is_affected_$$"
-        fi
-        
-        # If no vulnerable ranges specified, assume potentially affected
-        local has_ranges=$(echo "$advisory" | jq -r '.vulnerabilities[].vulnerable_version_range // empty' | wc -l)
-        if [ "$has_ranges" -eq 0 ]; then
+            done
+            
+
+        else
             echo "⚠️  No version range specified - assuming potentially affected"
+            is_version_affected=true
+        fi
+        
+        # Count concerning advisories based on combined criteria
+        # Advisory is concerning if BOTH conditions are met:
+        # 1. Version is affected AND 2. Severity is moderate/high/critical
+        if [ "$is_version_affected" = true ] && ([ "$severity" = "moderate" ] || [ "$severity" = "high" ] || [ "$severity" = "critical" ]); then
             concerning_advisories=$((concerning_advisories + 1))
         fi
         
-        # Count moderate/high/critical severity advisories as concerning
-        if [ "$severity" = "moderate" ] || [ "$severity" = "high" ] || [ "$severity" = "critical" ]; then
-            concerning_advisories=$((concerning_advisories + 1))
-        fi
+        advisory_index=$((advisory_index + 1))
     done
-    
-    # Store the concerning count for the parent process
-    echo "$concerning_advisories" > "$advisory_results"
-    
-    # Read the result back (since the while loop runs in a subshell)
-    concerning_advisories=$(cat "$advisory_results")
     
     echo ""
     echo "=== GITHUB ADVISORIES SUMMARY ==="
