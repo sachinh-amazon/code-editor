@@ -401,12 +401,12 @@ scan_github_advisories() {
             if [ -n "$vulnerable_range" ]; then
                 echo "Vulnerable versions: $vulnerable_range"
                 
-                # Use semver satisfies to check if current version satisfies the vulnerable range
-                if semver satisfies "$vscode_version" "$vulnerable_range" >/dev/null 2>&1; then
-                    echo "⚠️  Version $vscode_version is affected by this advisory (satisfies range: $vulnerable_range)"
+                # Use semver range to check if current version is in the vulnerable range
+                if semver --range "$vulnerable_range" "$vscode_version" >/dev/null 2>&1; then
+                    echo "⚠️  Version $vscode_version is affected by this advisory (in range: $vulnerable_range)"
                     echo "1" > /tmp/is_affected_$$
                 else
-                    echo "✅ Version $vscode_version does not satisfy vulnerable range: $vulnerable_range"
+                    echo "✅ Version $vscode_version is not in vulnerable range: $vulnerable_range"
                 fi
             fi
         done
