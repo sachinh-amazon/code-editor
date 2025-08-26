@@ -13,21 +13,26 @@ run_security_scan() {
     echo "PR Branch (code being scanned): $head_ref"
 
     # Define directories to scan
-    local scan_dirs=("code-editor-src" "code-editor-src/remote" "code-editor-src/extensions" "code-editor-src/remote/web")
+    local scan_dirs=(
+        "code-editor-src" 
+        "code-editor-src/remote" 
+        "code-editor-src/extensions" 
+        "code-editor-src/remote/web"
+    )
     local scan_results=()
     
     # Scan each directory
     for dir in "${scan_dirs[@]}"; do
         echo "=== Scanning directory: $dir ==="
         
-        # Check if directory exists and has package.json
+        # Check if directory exists and has package-lock.json
         if [ ! -d "$dir" ]; then
             echo "Warning: Directory $dir does not exist, skipping..."
             continue
         fi
         
-        if [ ! -f "$dir/package.json" ]; then
-            echo "Warning: No package.json found in $dir, skipping..."
+        if [ ! -f "$dir/package-lock.json" ]; then
+            echo "Warning: No package-lock.json found in $dir, skipping..."
             continue
         fi
         
@@ -61,8 +66,8 @@ run_security_scan() {
     echo "Publish success metric for Security Scan"
     aws cloudwatch put-metric-data \
         --namespace "GitHub/Workflows" \
-        --metric-name "ScanComplete" \
-        --dimensions "Repository=$repository,Workflow=SecurityScanning" \
+        --metric-name "SecurityScanInvoked" \
+        --dimensions "Repository=$repository,Workflow=SecurityScanning,Target=$target" \
         --value 1
 }
 
@@ -121,10 +126,6 @@ analyze_sbom_results() {
         if [ $dir_concerning -gt 0 ]; then
             has_failures=true
             echo "⚠️  Found $dir_concerning concerning vulnerabilities in $dir_name"
-            
-            # Display detailed vulnerability messages if available
-            echo "Vulnerability details for $dir_name:"
-            jq -r '.sbom.messages[]? | select(.vulnerability_message or .error_message) | "  - \(.purl // "Unknown"): \(.vulnerability_message // .error_message // .info_message)"' "$result_file" || echo "  No detailed messages available"
         else
             echo "✅ No concerning vulnerabilities in $dir_name"
         fi
@@ -152,7 +153,7 @@ analyze_sbom_results() {
             --namespace "GitHub/Workflows" \
             --metric-name "SecurityScanFailed" \
             --dimensions "Repository=$repository,Workflow=SecurityScanning,Target=$target" \
-            --value $total_concerning
+            --value 1
         
         exit 1
     else
