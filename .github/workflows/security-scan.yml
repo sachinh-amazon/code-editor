@@ -135,7 +135,6 @@ jobs:
           cd code-editor-src
           echo "Installing Dependencies"
           npm ci
-          npm install tar-fs@2.0.0
       
       - name: Install Security Scan Dependencies
         run: |
