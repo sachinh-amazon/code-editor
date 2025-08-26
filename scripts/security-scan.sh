@@ -117,6 +117,7 @@ generate_additional_sboms() {
     
     echo "Found semver package at: $semver_dir"
     cd "$semver_dir"
+    npm install
     cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 -o "$root_dir/additional-node-js-sboms/semver-sbom.json"
     cd - > /dev/null
     echo "Generated SBOM for semver package"
