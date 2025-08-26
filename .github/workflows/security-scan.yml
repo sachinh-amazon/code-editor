@@ -12,6 +12,7 @@ on:
   schedule:
     - cron: '0 22 * * *'
   
+  # Trigger 3: Manual trigger
   workflow_dispatch:
 
 jobs:
