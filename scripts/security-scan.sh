@@ -5,8 +5,7 @@ set -e
 # Function to scan main application dependencies
 scan_main_dependencies() {
     local target="$1"
-    local repository="$2"
-    local head_ref="$3"
+    local head_ref="$2"
     
     echo "Security Scanning Started"
     echo "Target: $target"
@@ -252,12 +251,11 @@ download_nodejs_binaries() {
 # Function to analyze SBOM scan results
 analyze_sbom_results() {
     local target="$1"
-    local repository="$2"
-    local results_file="$3"
+    local results_file="$2"
     
     # Check if results file parameter is provided
     if [ -z "$results_file" ]; then
-        echo "Error: Results file path is required as third parameter"
+        echo "Error: Results file path is required as second parameter"
         exit 1
     fi
     
@@ -341,10 +339,10 @@ analyze_sbom_results() {
 main() {
     case "$1" in
         "scan-main-dependencies")
-            scan_main_dependencies "$2" "$3" "$4"
+            scan_main_dependencies "$2" "$3"
             ;;
         "analyze-results")
-            analyze_sbom_results "$2" "$3" "$4"
+            analyze_sbom_results "$2" "$3"
             ;;
         "scan-additional-dependencies")
             scan_additional_sboms
