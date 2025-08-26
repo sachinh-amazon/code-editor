@@ -297,6 +297,8 @@ jobs:
           ./scripts/security-scan.sh analyze-results "Global Dependencies" "additional_scan_results_paths.txt"
 
       - name: Scan GitHub Security Advisories
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ./scripts/security-scan.sh scan-github-advisories
       
