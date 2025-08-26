@@ -2,8 +2,8 @@
 
 set -e
 
-# Function to run the SBOM security scan
-run_security_scan() {
+# Function to scan main application dependencies
+scan_main_dependencies() {
     local target="$1"
     local repository="$2"
     local head_ref="$3"
@@ -86,23 +86,184 @@ run_security_scan() {
     
     # Store scan results paths in a file for the analyze step
     printf '%s\n' "${scan_results[@]}" > scan_results_paths.txt
+}
 
-    echo "Publish success metric for Security Scan"
-    aws cloudwatch put-metric-data \
-        --namespace "GitHub/Workflows" \
-        --metric-name "SecurityScanInvoked" \
-        --dimensions "Repository=$repository,Workflow=SecurityScanning" \
-        --value 1
+# Function to generate SBOMs for additional dependencies
+generate_additional_sboms() {
+    echo "Generating SBOMs for additional dependencies"
+    
+    # Store current working directory
+    local root_dir=$(pwd)
+    
+    # Create directory for additional SBOMs
+    mkdir -p additional-node-js-sboms
+    
+    # 1. Generate SBOM for @electrovir/oss-attribution-generator
+    echo "Generating SBOM for @electrovir/oss-attribution-generator"
+    
+    # Find the global npm modules directory
+    global_npm_dir=$(npm list -g | head -1)
+    oss_attribution_dir="$global_npm_dir/node_modules/@electrovir/oss-attribution-generator"
+    
+    if [ -d "$oss_attribution_dir" ]; then
+        echo "Found OSS attribution generator at: $oss_attribution_dir"
+        cd "$oss_attribution_dir"
+        cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 -o "$root_dir/additional-node-js-sboms/oss-attribution-generator-sbom.json"
+        cd - > /dev/null
+        echo "Generated SBOM for OSS attribution generator"
+    else
+        echo "Error: OSS attribution generator not found at expected location: $oss_attribution_dir"
+        exit 1
+    fi
+    
+    # 2. Generate SBOM for Node.js linux-x64 binary
+    echo "Generating SBOM for Node.js linux-x64 binary"
+    
+    # Read Node.js version from .npmrc file
+    if [ -f "code-editor-src/remote/.npmrc" ]; then
+        NODE_VERSION=$(grep 'target=' code-editor-src/remote/.npmrc | cut -d'"' -f2)
+    else
+        NODE_VERSION="22.15.1"  # fallback version
+    fi
+    
+    node_x64_dir="nodejs-binaries/node-v$NODE_VERSION-linux-x64"
+    if [ -d "$node_x64_dir" ]; then
+        echo "Found Node.js x64 binary at: $node_x64_dir"
+        syft "$node_x64_dir" -o cyclonedx-json@1.5="$root_dir/additional-node-js-sboms/nodejs-x64-sbom.json"
+        echo "Generated SBOM for Node.js x64 binary"
+    else
+        echo "Error: Node.js x64 binary not found at expected location: $node_x64_dir"
+        exit 1
+    fi
+    
+    # 3. Generate SBOM for Node.js linux-arm64 binary
+    echo "Generating SBOM for Node.js linux-arm64 binary"
+    
+    node_arm64_dir="nodejs-binaries/node-v$NODE_VERSION-linux-arm64"
+    if [ -d "$node_arm64_dir" ]; then
+        echo "Found Node.js ARM64 binary at: $node_arm64_dir"
+        syft "$node_arm64_dir" -o cyclonedx-json@1.5="$root_dir/additional-node-js-sboms/nodejs-arm64-sbom.json"
+        echo "Generated SBOM for Node.js ARM64 binary"
+    else
+        echo "Error: Node.js ARM64 binary not found at expected location: $node_arm64_dir"
+        exit 1
+    fi
+    
+    # List generated SBOMs
+    echo "Generated additional SBOMs:"
+    ls -la additional-node-js-sboms/
+    
+    echo "Additional SBOM generation completed successfully"
+}
+
+# Function to scan additional SBOMs using AWS Inspector
+scan_additional_sboms() {
+    echo "Scanning additional SBOMs with AWS Inspector"
+    
+    # First, download Node.js binaries
+    echo "Downloading Node.js binaries..."
+    download_nodejs_binaries
+    
+    # Then, generate additional SBOMs
+    echo "Generating additional SBOMs..."
+    generate_additional_sboms
+    
+    # Create directory for additional scan results
+    mkdir -p additional-scan-results
+    
+    # Check if additional SBOMs directory exists (should exist after generation)
+    if [ ! -d "additional-node-js-sboms" ]; then
+        echo "Error: additional-node-js-sboms directory not found after generation"
+        exit 1
+    fi
+    
+    # Array to store scan result files for later analysis
+    local additional_scan_results=()
+    
+    # Scan each SBOM file in the additional-node-js-sboms directory
+    for sbom_file in additional-node-js-sboms/*.json; do
+        if [ ! -f "$sbom_file" ]; then
+            echo "Warning: No SBOM files found in additional-node-js-sboms directory"
+            continue
+        fi
+        
+        # Extract base filename without path and extension
+        local base_name=$(basename "$sbom_file" .json)
+        local result_file="additional-scan-results/${base_name}-scan-result.json"
+        
+        echo "Scanning SBOM: $sbom_file"
+        echo "Output will be saved to: $result_file"
+        
+        # Run AWS Inspector scan on the SBOM
+        aws inspector-scan scan-sbom --sbom "file://$sbom_file" > "$result_file"
+        
+        # Store the result file path for later analysis
+        additional_scan_results+=("$PWD/$result_file")
+        
+        echo "Completed scan for $base_name"
+    done
+    
+    # Store additional scan results paths in a file for the analyze step
+    printf '%s\n' "${additional_scan_results[@]}" > additional_scan_results_paths.txt
+    
+    echo "Additional SBOM scanning completed successfully"
+    echo "Scan results saved in additional-scan-results/ directory"
+    ls -la additional-scan-results/
+}
+
+# Function to download Node.js binaries for scanning
+download_nodejs_binaries() {
+    echo "Downloading Node.js prebuilt binaries for scanning"
+    
+    # Create directory for Node.js binaries
+    mkdir -p nodejs-binaries
+    cd nodejs-binaries
+    
+    # Read Node.js version from .npmrc file
+    if [ -f "../code-editor-src/remote/.npmrc" ]; then
+        NODE_VERSION=$(grep 'target=' ../code-editor-src/remote/.npmrc | cut -d'"' -f2)
+        echo "Found Node.js version $NODE_VERSION in .npmrc"
+    else
+        NODE_VERSION="22.15.1"  # fallback version
+        echo "Using fallback Node.js version $NODE_VERSION"
+    fi
+    
+    # Download Node.js binaries for both architectures
+    echo "Downloading Node.js v$NODE_VERSION for linux-x64"
+    curl -sSL "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-x64.tar.xz" -o "node-v$NODE_VERSION-linux-x64.tar.xz"
+    
+    echo "Downloading Node.js v$NODE_VERSION for linux-arm64"
+    curl -sSL "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-arm64.tar.xz" -o "node-v$NODE_VERSION-linux-arm64.tar.xz"
+    
+    # Extract the downloaded files
+    echo "Extracting Node.js binaries"
+    tar -xf "node-v$NODE_VERSION-linux-x64.tar.xz"
+    tar -xf "node-v$NODE_VERSION-linux-arm64.tar.xz"
+    
+    echo "Node.js binaries downloaded and extracted:"
+    ls -la
+    
+    # Return to root directory
+    cd - > /dev/null
+    
+    echo "Node.js dependencies preparation completed"
 }
 
 # Function to analyze SBOM scan results
 analyze_sbom_results() {
     local target="$1"
     local repository="$2"
+    local results_file="$3"
+    
+    # Check if results file parameter is provided
+    if [ -z "$results_file" ]; then
+        echo "Error: Results file path is required as third parameter"
+        exit 1
+    fi
     
     # Check if scan results paths file exists
-    if [ ! -f "scan_results_paths.txt" ]; then
-        echo "Error: Scan results paths file not found"
+    if [ ! -f "$results_file" ]; then
+        echo "Error: Scan results paths file '$results_file' not found"
         exit 1
     fi
     
@@ -152,7 +313,7 @@ analyze_sbom_results() {
             echo "✅ No concerning vulnerabilities in $dir_name"
         fi
         
-    done < scan_results_paths.txt
+    done < "$results_file"
     
     echo ""
     echo "=== TOTAL SCAN RESULTS ==="
@@ -169,41 +330,30 @@ analyze_sbom_results() {
     if [ $total_concerning -gt 0 ]; then
         echo "❌ Security scan FAILED: Found $total_concerning concerning vulnerabilities across all directories"
         echo "Critical: $total_critical, High: $total_high, Medium: $total_medium, Other: $total_other"
-        
-        # Publish failure metric
-        aws cloudwatch put-metric-data \
-            --namespace "GitHub/Workflows" \
-            --metric-name "SecurityScanFailed" \
-            --dimensions "Repository=$repository,Workflow=SecurityScanning" \
-            --value 1
-        
         exit 1
     else
         echo "✅ Security scan PASSED: No concerning vulnerabilities found across all directories"
         echo "Total Low vulnerabilities: $total_low (acceptable)"
-        
-        # Publish success metric
-        aws cloudwatch put-metric-data \
-            --namespace "GitHub/Workflows" \
-            --metric-name "SecurityScanPassed" \
-            --dimensions "Repository=$repository,Workflow=SecurityScanning" \
-            --value 1
     fi
 }
 
 # Main function to handle command line arguments
 main() {
     case "$1" in
-        "run-scan")
-            run_security_scan "$2" "$3" "$4"
+        "scan-main-dependencies")
+            scan_main_dependencies "$2" "$3" "$4"
             ;;
         "analyze-results")
-            analyze_sbom_results "$2" "$3"
+            analyze_sbom_results "$2" "$3" "$4"
+            ;;
+        "scan-additional-dependencies")
+            scan_additional_sboms
             ;;
         *)
-            echo "Usage: $0 {run-scan|analyze-results} <target> <repository> [head_ref]"
-            echo "  run-scan: Execute the SBOM security scan"
+            echo "Usage: $0 {scan-main-dependencies|analyze-results|scan-additional-dependencies}"
+            echo "  scan-main-dependencies: Generate SBOMs and scan main application dependencies"
             echo "  analyze-results: Analyze SBOM scan results and fail if vulnerabilities found"
+            echo "  scan-additional-dependencies: Download, generate SBOMs, and scan additional Node.js dependencies"
             exit 1
             ;;
     esac
