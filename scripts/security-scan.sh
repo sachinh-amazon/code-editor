@@ -120,7 +120,7 @@ generate_additional_sboms() {
     
     # Read Node.js version from .npmrc file
     if [ -f "third-party-src/remote/.npmrc" ]; then
-        NODE_VERSION=$(grep 'target=' code-editor-src/remote/.npmrc | cut -d'"' -f2)
+        NODE_VERSION=$(grep 'target=' third-party-src/remote/.npmrc | cut -d'"' -f2)
     else
         echo "ERROR: No .npmrc file found"
         exit 1
