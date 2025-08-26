@@ -104,50 +104,41 @@ generate_additional_sboms() {
     global_npm_dir=$(npm list -g | head -1)
     oss_attribution_dir="$global_npm_dir/node_modules/@electrovir/oss-attribution-generator"
     
-    if [ -d "$oss_attribution_dir" ]; then
-        echo "Found OSS attribution generator at: $oss_attribution_dir"
-        cd "$oss_attribution_dir"
-        cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 -o "$root_dir/additional-node-js-sboms/oss-attribution-generator-sbom.json"
-        cd - > /dev/null
-        echo "Generated SBOM for OSS attribution generator"
-    else
-        echo "Error: OSS attribution generator not found at expected location: $oss_attribution_dir"
-        exit 1
-    fi
+    echo "Found OSS attribution generator at: $oss_attribution_dir"
+    cd "$oss_attribution_dir"
+    cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 -o "$root_dir/additional-node-js-sboms/oss-attribution-generator-sbom.json"
+    cd - > /dev/null
+    echo "Generated SBOM for OSS attribution generator"
     
-    # 2. Generate SBOM for Node.js linux-x64 binary
+    # 2. Generate SBOM for semver package
+    echo "Generating SBOM for semver package"
+    
+    semver_dir="$global_npm_dir/node_modules/semver"
+    
+    echo "Found semver package at: $semver_dir"
+    cd "$semver_dir"
+    cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 -o "$root_dir/additional-node-js-sboms/semver-sbom.json"
+    cd - > /dev/null
+    echo "Generated SBOM for semver package"
+    
+    # 3. Generate SBOM for Node.js linux-x64 binary
     echo "Generating SBOM for Node.js linux-x64 binary"
     
     # Read Node.js version from .npmrc file
-    if [ -f "third-party-src/remote/.npmrc" ]; then
-        NODE_VERSION=$(grep 'target=' third-party-src/remote/.npmrc | cut -d'"' -f2)
-    else
-        echo "ERROR: No .npmrc file found"
-        exit 1
-    fi
+    NODE_VERSION=$(grep 'target=' third-party-src/remote/.npmrc | cut -d'"' -f2)
     
     node_x64_dir="nodejs-binaries/node-v$NODE_VERSION-linux-x64"
-    if [ -d "$node_x64_dir" ]; then
-        echo "Found Node.js x64 binary at: $node_x64_dir"
-        syft "$node_x64_dir" -o cyclonedx-json@1.5="$root_dir/additional-node-js-sboms/nodejs-x64-sbom.json"
-        echo "Generated SBOM for Node.js x64 binary"
-    else
-        echo "Error: Node.js x64 binary not found at expected location: $node_x64_dir"
-        exit 1
-    fi
+    echo "Found Node.js x64 binary at: $node_x64_dir"
+    syft "$node_x64_dir" -o cyclonedx-json@1.5="$root_dir/additional-node-js-sboms/nodejs-x64-sbom.json"
+    echo "Generated SBOM for Node.js x64 binary"
     
-    # 3. Generate SBOM for Node.js linux-arm64 binary
+    # 4. Generate SBOM for Node.js linux-arm64 binary
     echo "Generating SBOM for Node.js linux-arm64 binary"
     
     node_arm64_dir="nodejs-binaries/node-v$NODE_VERSION-linux-arm64"
-    if [ -d "$node_arm64_dir" ]; then
-        echo "Found Node.js ARM64 binary at: $node_arm64_dir"
-        syft "$node_arm64_dir" -o cyclonedx-json@1.5="$root_dir/additional-node-js-sboms/nodejs-arm64-sbom.json"
-        echo "Generated SBOM for Node.js ARM64 binary"
-    else
-        echo "Error: Node.js ARM64 binary not found at expected location: $node_arm64_dir"
-        exit 1
-    fi
+    echo "Found Node.js ARM64 binary at: $node_arm64_dir"
+    syft "$node_arm64_dir" -o cyclonedx-json@1.5="$root_dir/additional-node-js-sboms/nodejs-arm64-sbom.json"
+    echo "Generated SBOM for Node.js ARM64 binary"
     
     # List generated SBOMs
     echo "Generated additional SBOMs:"
@@ -336,6 +327,133 @@ analyze_sbom_results() {
     fi
 }
 
+# Function to scan GitHub security advisories for microsoft/vscode
+scan_github_advisories() {
+    echo "Scanning GitHub security advisories for microsoft/vscode"
+    
+    local repo_owner="microsoft"
+    local repo_name="vscode"
+    local vscode_version=$(jq -r '.version' third-party-src/package.json)
+    
+    echo "Found VS Code version: $vscode_version"
+    
+    echo "Fetching security advisories from GitHub API for $repo_owner/$repo_name"
+    
+    # Fetch security advisories using GitHub CLI
+    local temp_file=$(mktemp)
+    
+    # Make API request using gh cli with proper headers
+    if ! gh api \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        "/repos/$repo_owner/$repo_name/security-advisories" > "$temp_file"; then
+        echo "Error: Failed to fetch GitHub security advisories using GitHub CLI"
+        echo "Make sure GitHub CLI is installed and authenticated"
+        rm -f "$temp_file"
+        exit 1
+    fi
+    
+    # Check if the response is valid JSON and not an error
+    if ! jq empty "$temp_file" 2>/dev/null; then
+        echo "Error: Invalid JSON response from GitHub API"
+        cat "$temp_file"
+        rm -f "$temp_file"
+        exit 1
+    fi
+    
+    # Count total advisories
+    local total_advisories=$(jq length "$temp_file")
+    echo "Found $total_advisories total advisories for $repo_owner/$repo_name"
+    
+    if [ "$total_advisories" -eq 0 ]; then
+        echo "✅ No security advisories found for microsoft/vscode"
+        rm -f "$temp_file"
+        return 0
+    fi
+    
+    # Process advisories
+    local concerning_advisories=0
+    local advisory_results=$(mktemp)
+    
+    echo ""
+    echo "=== GITHUB SECURITY ADVISORIES ANALYSIS ==="
+    
+    # Extract and analyze each advisory
+    jq -c '.[]' "$temp_file" | while read -r advisory; do
+        local ghsa_id=$(echo "$advisory" | jq -r '.ghsa_id // "N/A"')
+        local cve_id=$(echo "$advisory" | jq -r '.cve_id // "N/A"')
+        local severity=$(echo "$advisory" | jq -r '.severity // "unknown"')
+        local summary=$(echo "$advisory" | jq -r '.summary // "No summary available"')
+        local published_at=$(echo "$advisory" | jq -r '.published_at // "N/A"')
+        
+        echo ""
+        echo "Advisory: $ghsa_id"
+        [ "$cve_id" != "N/A" ] && echo "CVE: $cve_id"
+        echo "Severity: $severity"
+        echo "Published: $published_at"
+        echo "Summary: $summary"
+        
+        # Check if current version is affected using semver
+        # Extract all vulnerable version ranges for this advisory
+        echo "$advisory" | jq -r '.vulnerabilities[].vulnerable_version_range // empty' | while read -r vulnerable_range; do
+            if [ -n "$vulnerable_range" ]; then
+                echo "Vulnerable versions: $vulnerable_range"
+                
+                # Use semver satisfies to check if current version satisfies the vulnerable range
+                if semver satisfies "$vscode_version" "$vulnerable_range" >/dev/null 2>&1; then
+                    echo "⚠️  Version $vscode_version is affected by this advisory (satisfies range: $vulnerable_range)"
+                    echo "1" > /tmp/is_affected_$$
+                else
+                    echo "✅ Version $vscode_version does not satisfy vulnerable range: $vulnerable_range"
+                fi
+            fi
+        done
+        
+        # Check if any range matched (since the while loop runs in a subshell)
+        if [ -f "/tmp/is_affected_$$" ]; then
+            concerning_advisories=$((concerning_advisories + 1))
+            rm -f "/tmp/is_affected_$$"
+        fi
+        
+        # If no vulnerable ranges specified, assume potentially affected
+        local has_ranges=$(echo "$advisory" | jq -r '.vulnerabilities[].vulnerable_version_range // empty' | wc -l)
+        if [ "$has_ranges" -eq 0 ]; then
+            echo "⚠️  No version range specified - assuming potentially affected"
+            concerning_advisories=$((concerning_advisories + 1))
+        fi
+        
+        # Count moderate/high/critical severity advisories as concerning
+        if [ "$severity" = "moderate" ] || [ "$severity" = "high" ] || [ "$severity" = "critical" ]; then
+            concerning_advisories=$((concerning_advisories + 1))
+        fi
+    done
+    
+    # Store the concerning count for the parent process
+    echo "$concerning_advisories" > "$advisory_results"
+    
+    # Read the result back (since the while loop runs in a subshell)
+    concerning_advisories=$(cat "$advisory_results")
+    
+    echo ""
+    echo "=== GITHUB ADVISORIES SUMMARY ==="
+    echo "Total advisories found: $total_advisories"
+    echo "Concerning advisories: $concerning_advisories"
+    echo "=================================================="
+    
+    # Clean up temp files
+    rm -f "$temp_file" "$advisory_results"
+    
+    # Determine if we should fail based on concerning advisories
+    if [ "$concerning_advisories" -gt 0 ]; then
+        echo "⚠️  Found $concerning_advisories concerning GitHub security advisories for microsoft/vscode"
+        echo "Review the advisories above to determine if they affect your VS Code integration"
+        exit 1
+    else
+        echo "✅ No concerning GitHub security advisories found for microsoft/vscode"
+        return 0
+    fi
+}
+
 # Main function to handle command line arguments
 main() {
     case "$1" in
@@ -348,11 +466,15 @@ main() {
         "scan-additional-dependencies")
             scan_additional_sboms
             ;;
+        "scan-github-advisories")
+            scan_github_advisories
+            ;;
         *)
-            echo "Usage: $0 {scan-main-dependencies|analyze-results|scan-additional-dependencies}"
+            echo "Usage: $0 {scan-main-dependencies|analyze-results|scan-additional-dependencies|scan-github-advisories}"
             echo "  scan-main-dependencies: Generate SBOMs and scan main application dependencies"
             echo "  analyze-results: Analyze SBOM scan results and fail if vulnerabilities found"
             echo "  scan-additional-dependencies: Download, generate SBOMs, and scan additional Node.js dependencies"
+            echo "  scan-github-advisories: Scan GitHub security advisories for microsoft/vscode"
             exit 1
             ;;
     esac
