@@ -66,8 +66,7 @@ run_security_scan() {
         elif [ "$scan_type" = "subdir" ]; then
             # Remaining scans: stay in code-editor-src and specify directory
             echo "Scanning subdirectory: $dir from code-editor-src"
-            echo "pwd: $(pwd)"
-            echo "dir: $dir"
+            cd code-editor-src
             cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 -o "$sbom_file" "$dir"
             
         elif [ "$scan_type" = "subdir_ignore_errors" ]; then
@@ -75,6 +74,7 @@ run_security_scan() {
             # This is to ignore the extraneous error "npm error missing: tslib@*, required by @microsoft/applicationinsights-core-js@2.8.15"
             # This behaviour is same for internal scanning.
             echo "Scanning subdirectory: $dir from code-editor-src (ignoring npm errors)"
+            cd code-editor-src
             cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 --ignore-npm-errors -o "$sbom_file" "$dir"
         fi
         
@@ -83,6 +83,9 @@ run_security_scan() {
         
         # Store the result file path for later analysis
         scan_results+=("$PWD/$result_file")
+        
+        # Return to root directory for next iteration
+        cd - > /dev/null
         
         echo "Completed scan for $dir"
     done
