@@ -160,15 +160,6 @@ jobs:
           echo "Installing CycloneDX SBOM for npm"
           npm i -g @cyclonedx/cyclonedx-npm
 
-          echo "Installing OSS Attribution Generator"
-          oss_attribution_version=$(cat config/pinned-versions/oss-attribution-generator-version.txt)
-          npm i -g @electrovir/oss-attribution-generator@$oss_attribution_version
-          
-          echo "Installing Syft for SBOM generation"
-          curl -sSfL https://get.anchore.io/syft | sudo sh -s -- -b /usr/local/bin
-          echo "Syft installation completed"
-          syft version
-
 
       - name: Run Security Scan
         run: |
