@@ -127,10 +127,9 @@ jobs:
       - name: Update security scan script from main
         run: |
           # Older branches may not have the latest versions of the
-          # security scan scripts. So we pull the latest one from main
-          echo "Pulling latest security-scan.sh script from main branch"
-          git fetch origin main
-          git checkout origin/main -- scripts/security-scan.sh
+          # security scan scripts. So we download the latest one from main
+          echo "Downloading latest security-scan.sh script from main branch"
+          curl -sSL "https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/security-scan.sh" -o scripts/security-scan.sh
           echo "Updated security-scan.sh to latest version from main"
       
       - name: Set up environment
@@ -162,7 +161,7 @@ jobs:
           npm i -g @cyclonedx/cyclonedx-npm
 
           echo "Installing OSS Attribution Generator"
-          oss_attribution_version=$(cat build/oss-attribution-generator-version.txt)
+          oss_attribution_version=$(cat config/pinned-versions/oss-attribution-generator-version.txt)
           npm i -g @electrovir/oss-attribution-generator@$oss_attribution_version
           
           echo "Installing Syft for SBOM generation"
@@ -203,6 +202,68 @@ jobs:
         run: |
           ./scripts/security-scan.sh analyze-results "${{ matrix.target }}" "scan_results_paths.txt"
 
+      - name: Publish Scan Successful Metric
+        run: |
+          aws cloudwatch put-metric-data \
+            --namespace "GitHub/Workflows" \
+            --metric-name "SecurityScanSuccessful" \
+            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning" \
+            --value 1
+
+      - name: Publish Failure Metrics
+        if: failure()
+        run: |
+          echo "Job failed - publishing failure metrics"
+          
+          # Publish workflow failure metric
+          aws cloudwatch put-metric-data \
+            --namespace "GitHub/Workflows" \
+            --metric-name "SecurityScanFailed" \
+            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning" \
+            --value 1
+  
+  security-scan-global-dependencies:
+    runs-on: ubuntu-latest
+    environment: security-scanning-workflow-env
+    permissions:
+      id-token: write # Required for OIDC
+    steps:
+      - name: Assume IAM Role
+        id: assume-aws-iam-role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
+          aws-region: us-east-1
+          role-session-name: security-scan-global-dependencies
+          
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          submodules: recursive
+
+      - name: Update security scan script from main
+        run: |
+          # Older branches may not have the latest versions of the
+          # security scan scripts. So we download the latest one from main
+          echo "Downloading latest security-scan.sh script from main branch"
+          curl -sSL "https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/security-scan.sh" -o scripts/security-scan.sh
+          echo "Updated security-scan.sh to latest version from main"
+      
+      - name: Install Security Scan Dependencies
+        run: |
+          echo "Installing CycloneDX SBOM for npm"
+          npm i -g @cyclonedx/cyclonedx-npm
+
+          echo "Installing OSS Attribution Generator"
+          oss_attribution_version=$(cat config/pinned-versions/oss-attribution-generator-version.txt)
+          npm i -g @electrovir/oss-attribution-generator@$oss_attribution_version
+          
+          echo "Installing Syft for SBOM generation"
+          curl -sSfL https://get.anchore.io/syft | sudo sh -s -- -b /usr/local/bin
+          echo "Syft installation completed"
+          syft version
+      
       - name: Prepare Additional Node JS Dependencies for Scanning
         run: |
           ./scripts/security-scan.sh scan-additional-dependencies
@@ -226,15 +287,7 @@ jobs:
       - name: Analyze Additional SBOM Scan Results
         run: |
           ./scripts/security-scan.sh analyze-results "${{ matrix.target }}" "additional_scan_results_paths.txt"
-
-      - name: Publish Scan Successful Metric
-        run: |
-          aws cloudwatch put-metric-data \
-            --namespace "GitHub/Workflows" \
-            --metric-name "SecurityScanSuccessful" \
-            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning" \
-            --value 1
-
+      
       - name: Publish Failure Metrics
         if: failure()
         run: |

@@ -93,7 +93,7 @@ generate_oss_attribution() {
     fi
 
     # Read OSS attribution generator version from file
-    local oss_attribution_version=$(cat "$ROOT_DIR/build/oss-attribution-generator-version.txt")
+    local oss_attribution_version=$(cat "$ROOT_DIR/config/pinned-versions/oss-attribution-generator-version.txt")
     
     npx --yes --package @electrovir/oss-attribution-generator@$oss_attribution_version -- generate-attribution --baseDir "$BUILD_SRC_DIR" --outputDir "$oss_attribution_dir"
     attribution_licenses=$(cat "$oss_attribution_dir/attribution.txt")
@@ -171,7 +171,7 @@ generate_unified_oss_attribution() {
     mkdir -p "$BUILD_DIR/private/oss-attribution"
     
     # Read OSS attribution generator version from file
-    local oss_attribution_version=$(cat "$ROOT_DIR/build/oss-attribution-generator-version.txt")
+    local oss_attribution_version=$(cat "$ROOT_DIR/config/pinned-versions/oss-attribution-generator-version.txt")
     
     npx --yes --package @electrovir/oss-attribution-generator@$oss_attribution_version -- generate-attribution \
         -b "${target_dirs[0]}" "${target_dirs[1]}" "${target_dirs[2]}" "${target_dirs[3]}" \
