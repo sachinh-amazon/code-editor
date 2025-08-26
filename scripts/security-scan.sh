@@ -66,6 +66,8 @@ run_security_scan() {
         elif [ "$scan_type" = "subdir" ]; then
             # Remaining scans: stay in code-editor-src and specify directory
             echo "Scanning subdirectory: $dir from code-editor-src"
+            echo "pwd: $(pwd)"
+            echo "dir: $dir"
             cyclonedx-npm --omit dev --output-reproducible --spec-version 1.5 -o "$sbom_file" "$dir"
             
         elif [ "$scan_type" = "subdir_ignore_errors" ]; then
