@@ -271,7 +271,7 @@ jobs:
       - name: Upload Additional Node.js SBOMs
         uses: actions/upload-artifact@v4
         with:
-          name: additional-nodejs-sboms-${{ matrix.target }}-${{ matrix.branch }}
+          name: additional-nodejs-sboms-${{ github.head_ref }}
           path: additional-node-js-sboms/
           retention-days: 90
           if-no-files-found: error
@@ -279,14 +279,14 @@ jobs:
       - name: Upload Additional Inspector Scan Results
         uses: actions/upload-artifact@v4
         with:
-          name: additional-inspector-results-${{ matrix.target }}-${{ matrix.branch }}
+          name: additional-inspector-results-${{ github.head_ref }}
           path: additional-scan-results/
           retention-days: 90
           if-no-files-found: error
 
       - name: Analyze Additional SBOM Scan Results
         run: |
-          ./scripts/security-scan.sh analyze-results "${{ matrix.target }}" "additional_scan_results_paths.txt"
+          ./scripts/security-scan.sh analyze-results "Global Dependencies" "additional_scan_results_paths.txt"
       
       - name: Publish Failure Metrics
         if: failure()
