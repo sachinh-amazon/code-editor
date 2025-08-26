@@ -135,7 +135,7 @@ jobs:
           aws cloudwatch put-metric-data \
             --namespace "GitHub/Workflows" \
             --metric-name "SecurityScanFailed" \
-            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning \
+            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning" \
             --value 1
 
   get-branches-to-scan:
