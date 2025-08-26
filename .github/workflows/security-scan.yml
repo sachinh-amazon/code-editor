@@ -112,6 +112,15 @@ jobs:
         with:
           ref: ${{ matrix.branch }}
           submodules: recursive
+
+      - name: Update security scan script from main
+        run: |
+          # Older branches may not have the latest versions of the
+          # security scan scripts. So we pull the latest one from main
+          echo "Pulling latest security-scan.sh script from main branch"
+          git fetch origin main
+          git checkout origin/main -- scripts/security-scan.sh
+          echo "Updated security-scan.sh to latest version from main"
       
       - name: Set up environment
         run: |
