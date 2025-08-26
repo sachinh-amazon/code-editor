@@ -112,7 +112,6 @@ analyze_sbom_results() {
     local total_medium=0
     local total_other=0
     local total_low=0
-    local has_failures=false
     
     echo "=== SBOM Security Scan Results for $target ==="
     
@@ -148,7 +147,6 @@ analyze_sbom_results() {
         # Check for concerning vulnerabilities in this directory
         local dir_concerning=$((critical + high + medium + other))
         if [ $dir_concerning -gt 0 ]; then
-            has_failures=true
             echo "⚠️  Found $dir_concerning concerning vulnerabilities in $dir_name"
         else
             echo "✅ No concerning vulnerabilities in $dir_name"

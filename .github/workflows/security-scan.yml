@@ -8,9 +8,12 @@ on:
       - '*.*'
     types: [opened, edited, reopened, synchronize]
 
-  # Trigger 2: Daily scheduled run at 22:00 UTC
+  # Trigger 2: Daily scheduled run at 22:13 UTC
+  # Schedule it a random minute because most Github Actions are scheduled
+  # at the start of the hour and their invocation can get delayed.
+  # Ref: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule
   schedule:
-    - cron: '40 13 * * *'
+    - cron: '13 22 * * *'
   
   # Trigger 3: Manual trigger
   workflow_dispatch:
