@@ -10,7 +10,7 @@ on:
 
   # Trigger 2: Daily scheduled run at 22:00 UTC
   schedule:
-    - cron: '0 22 * * *'
+    - cron: '40 13 * * *'
   
   # Trigger 3: Manual trigger
   workflow_dispatch:
