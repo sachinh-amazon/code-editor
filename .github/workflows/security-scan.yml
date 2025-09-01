@@ -6,7 +6,7 @@ on:
     branches:
       - main
       - '*.*'
-    types: [opened, edited, reopened, synchronize]
+    types: [opened, reopened, synchronize]
 
   # Trigger 2: Daily scheduled run at 22:13 UTC
   # Schedule it a random minute because most Github Actions are scheduled
@@ -108,7 +108,7 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
           aws-region: us-east-1
-          role-session-name: security-scan-${{ matrix.target }}-${{ matrix.branch }}
+          role-session-name: security-scan-${{ matrix.target }}
       
       - name: Publish Scan Invoked metric
         run: |
@@ -202,7 +202,7 @@ jobs:
             --value 1
 
       - name: Publish Failure Metrics
-        if: failure()
+        if: failure() && github.event_name == 'schedule'
         run: |
           echo "Job failed - publishing failure metrics"
           
@@ -294,7 +294,7 @@ jobs:
           ./scripts/security-scan.sh scan-github-advisories
       
       - name: Publish Failure Metrics
-        if: failure()
+        if: failure() && github.event_name == 'schedule'
         run: |
           echo "Job failed - publishing failure metrics"
           
