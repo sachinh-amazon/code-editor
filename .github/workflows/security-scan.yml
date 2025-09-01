@@ -361,6 +361,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [get-branches-to-scan, security-scan]
     if: always()
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: ${{ fromJson(needs.get-branches-to-scan.outputs.security-scan-branches) }}
     steps:
       - name: Download all scan success files
         uses: actions/download-artifact@v4
@@ -368,53 +372,47 @@ jobs:
           pattern: scan-success-*
           merge-multiple: true
       
-      - name: Check which branches were successful for all targets
+      - name: Check if branch was successful for all targets
         run: |
-          # Parse targets and branches from environment variables and job outputs
+          # Parse targets from environment variable
           targets_json='${{ env.CODE_EDITOR_TARGETS }}'
           targets=($(echo "$targets_json" | jq -r '.[]'))
-          branches_json='${{ needs.get-branches-to-scan.outputs.security-scan-branches }}'
-          branches=($(echo "$branches_json" | jq -r '.[]'))
+          branch="${{ matrix.branch }}"
+          all_success=true
           
+          echo "Checking success for branch: $branch"
           echo "Targets to check: ${targets[@]}"
-          echo "Branches to check: ${branches[@]}"
           
-          # Process each branch
-          for branch in "${branches[@]}"; do
-            echo "========================================="
-            echo "Checking success for branch: $branch"
-            all_success=true
+          # Check if all target success files exist for this branch
+          for target in "${targets[@]}"; do
+            success_file="scan-success-${target}-${branch}.txt"
+            echo "Checking for file: $success_file"
             
-            # Check if all target success files exist for this branch
-            for target in "${targets[@]}"; do
-              success_file="scan-success-${target}-${branch}.txt"
-              echo "Checking for file: $success_file"
-              
-              if [ -f "$success_file" ]; then
-                echo "✓ Found success file for target $target on branch $branch"
-              else
-                echo "✗ Missing success file for target $target on branch $branch"
-                all_success=false
-                break
-              fi
-            done
-            
-            # Create branch success file only if all targets succeeded
-            if [ "$all_success" = true ]; then
-              echo "✓ All scans successful for branch $branch - creating branch success file"
-              echo "PASS" > scan-success-branch-${branch}.txt
+            if [ -f "$success_file" ]; then
+              echo "✓ Found success file for target $target on branch $branch"
             else
-              echo "✗ Some scans failed for branch $branch - not creating branch success file"
+              echo "✗ Missing success file for target $target on branch $branch"
+              all_success=false
+              break
             fi
           done
+          
+          # Create branch success file only if all targets succeeded
+          if [ "$all_success" = true ]; then
+            echo "✓ All scans successful for branch $branch - creating branch success file"
+            echo "PASS" > scan-success-branch-${branch}.txt
+          else
+            echo "✗ Some scans failed for branch $branch - not creating branch success file"
+            exit 1
+          fi
       
-      - name: Upload Branch Success Files
+      - name: Upload Branch Success File
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: scan-success-branch-files
-          path: scan-success-branch-*.txt
+          name: scan-success-branch-${{ matrix.branch }}
+          path: scan-success-branch-${{ matrix.branch }}.txt
           retention-days: 90
-          if-no-files-found: ignore
   
   security-scan-global-dependencies:
     runs-on: ubuntu-latest
