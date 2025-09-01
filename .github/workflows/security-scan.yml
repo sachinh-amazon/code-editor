@@ -541,7 +541,7 @@ jobs:
             --value 1
   
   handle-failures:
-    name: Handle Failures
+    name: Handle Failures V1
     runs-on: ubuntu-latest
     needs: [get-branches-to-scan, generate-security-scan-output]
     environment: security-scanning-workflow-env
