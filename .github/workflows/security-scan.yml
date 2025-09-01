@@ -235,14 +235,14 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
           aws-region: us-east-1
-          role-session-name: security-scan-${{ matrix.target }}
+          role-session-name: security-scan-${{ matrix.target }}-${{matrix.branch}}
       
       - name: Publish Scan Invoked metric
         run: |
           aws cloudwatch put-metric-data \
             --namespace "GitHub/Workflows" \
             --metric-name "SecurityScanInvoked" \
-            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScan,Target=${{ matrix.target }}" \
+            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScan,Target=${{ matrix.target }},Branch=${{matrix.branch}}" \
             --value 1
           
       - name: Checkout branch
@@ -342,7 +342,7 @@ jobs:
           aws cloudwatch put-metric-data \
             --namespace "GitHub/Workflows" \
             --metric-name "SecurityScanSuccessful" \
-            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScan,Target=${{ matrix.target }}" \
+            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScan,Target=${{ matrix.target }},Branch=${{matrix.branch}}" \
             --value 1
 
       - name: Publish Failure Metrics
@@ -354,7 +354,7 @@ jobs:
           aws cloudwatch put-metric-data \
             --namespace "GitHub/Workflows" \
             --metric-name "SecurityScanFailed" \
-            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScan,Target=${{ matrix.target }}" \
+            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScan,Target=${{ matrix.target }},Branch=${{matrix.branch}}" \
             --value 1
 
   generate-security-scan-output:
@@ -439,14 +439,14 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
           aws-region: us-east-1
-          role-session-name: security-scan-global-dependencies
+          role-session-name: security-scan-global-dependencies-${{matrix.branch}}
       
       - name: Publish Scan Invoked metric
         run: |
           aws cloudwatch put-metric-data \
             --namespace "GitHub/Workflows" \
             --metric-name "GlobalDependenciesSecurityScanInvoked" \
-            --dimensions "Repository=${{ github.repository }},Workflow=GlobalDependenciesSecurityScan" \
+            --dimensions "Repository=${{ github.repository }},Workflow=GlobalDependenciesSecurityScan,Branch=${{matrix.branch}}" \
             --value 1
           
       - name: Checkout branch
@@ -537,7 +537,7 @@ jobs:
           aws cloudwatch put-metric-data \
             --namespace "GitHub/Workflows" \
             --metric-name "SecurityScanFailed" \
-            --dimensions "Repository=${{ github.repository }},Workflow=GlobalDependenciesSecurityScan" \
+            --dimensions "Repository=${{ github.repository }},Workflow=GlobalDependenciesSecurityScan,Branch=${{matrix.branch}}" \
             --value 1
   
   handle-failures:
