@@ -1,5 +1,8 @@
 name: Security Scanning
 
+env:
+  CODE_EDITOR_TARGETS: '["code-editor-sagemaker-server"]'
+
 on:
   # Trigger 1: PR created on main or version branches (*.*)
   pull_request:
@@ -22,87 +25,209 @@ jobs:
   get-branches-to-scan:
     runs-on: ubuntu-latest
     outputs:
-      branches: ${{ steps.determine-branches.outputs.branches }}
+      security-scan-branches: ${{ steps.determine-pr-branches.outputs.branches || steps.determine-scheduled-security-scan-branches.outputs.branches }}
+      global-dependencies-branches: ${{ steps.determine-pr-branches.outputs.branches || steps.determine-scheduled-global-dependencies-branches.outputs.branches }}
+      output-branch-name: ${{ steps.determine-pr-branches.outputs.output-branch-name || steps.determine-scheduled-branches.outputs.output-branch-name }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Determine branches to scan
-        id: determine-branches
+      - name: Determine branches for PR events
+        id: determine-pr-branches
+        if: github.event_name == 'pull_request'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            # For PR events, validate base branch and use head ref if valid
-            base_ref="${{ github.base_ref }}"
-            echo "Base branch: $base_ref"
-            
-            if [[ "$base_ref" =~ ^[0-9]+\.[0-9]+$ ]] || [[ "$base_ref" == "main" ]]; then
-              echo "Base branch matches allowed pattern (main or digit.digit)"
-              echo "branches=[\"${{ github.head_ref }}\"]" >> $GITHUB_OUTPUT
-              echo "Branches to scan: [${{ github.head_ref }}]"
-            else
-              echo "Base branch does not match allowed pattern - no branches to scan"
-              echo "branches=[]" >> $GITHUB_OUTPUT
-            fi
+          # For PR events, validate base branch and use head ref if valid
+          base_ref="${{ github.base_ref }}"
+          head_ref="${{ github.head_ref }}"
+          echo "Base branch: $base_ref"
+          echo "Head branch: $head_ref"
+          
+          if [[ "$base_ref" =~ ^[0-9]+\.[0-9]+$ ]] || [[ "$base_ref" == "main" ]]; then
+            echo "Base branch matches allowed pattern (main or digit.digit)"
+            echo "branches=[\"$head_ref\"]" >> $GITHUB_OUTPUT
+            echo "output-branch-name=$base_ref" >> $GITHUB_OUTPUT
+            echo "Branches to scan: [$head_ref]"
+            echo "Output files will use branch name: $base_ref"
           else
-            # For scheduled/manual runs, get branches and filter by recent runs
-            echo "Getting branches for scheduled/manual run"
-            
-            # Get main branch and all version branches (*.*)
-            branches=$(git branch -r | grep -E 'origin/(main|[0-9]+\.[0-9]+)' | sed 's/origin\///' | tr '\n' ' ')
-            echo "Found branches: $branches"
-            
-            branches_to_scan=""
-            workflow_name="Security Scanning"
-            # Get previous day from 00:00 UTC to 23:59 UTC
-            previous_day_start=$(date -d 'yesterday' -u +%Y-%m-%dT00:00:00Z)
-            previous_day_end=$(date -d 'yesterday' -u +%Y-%m-%dT23:59:59Z)
-            
-            echo "Checking for workflow runs from previous day: $previous_day_start to $previous_day_end"
-            
-            # Check each branch for recent workflow runs
-            for branch in $branches; do
-              echo "Checking branch: $branch"
+            echo "Base branch does not match allowed pattern - no branches to scan"
+            echo "branches=[]" >> $GITHUB_OUTPUT
+            echo "output-branch-name=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get all upstream branches
+        id: get-upstream-branches
+        if: github.event_name != 'pull_request'
+        run: |
+          # Get main branch and all version branches (*.*)
+          branches=$(git branch -r | grep -E 'origin/(main|[0-9]+\.[0-9]+)' | sed 's/origin\///' | tr '\n' ' ')
+          echo "Found upstream branches: $branches"
+          echo "upstream-branches=$branches" >> $GITHUB_OUTPUT
+          echo "output-branch-name=scheduled" >> $GITHUB_OUTPUT
+
+      - name: Get completed workflows from previous day
+        id: get-completed-workflows
+        if: github.event_name != 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          workflow_name="Security Scanning"
+          # Get previous day from 00:00 UTC to 23:59 UTC
+          previous_day_start=$(date -d 'yesterday' -u +%Y-%m-%dT00:00:00Z)
+          previous_day_end=$(date -d 'yesterday' -u +%Y-%m-%dT23:59:59Z)
+          
+          echo "Getting completed workflows from previous day: $previous_day_start to $previous_day_end"
+          
+          # Get all completed workflow runs from previous day
+          completed_runs=$(gh run list --workflow="$workflow_name" --json id,startedAt,conclusion,headBranch --status completed --limit 100)
+          previous_day_runs=$(echo "$completed_runs" | jq --arg start "$previous_day_start" --arg end "$previous_day_end" '.[] | select(.startedAt >= $start and .startedAt <= $end)')
+          
+          echo "Found completed workflow runs from previous day:"
+          echo "$previous_day_runs" | jq -r '.id'
+          
+          # Store workflow run IDs for artifact checking
+          run_ids=$(echo "$previous_day_runs" | jq -r '.id' | tr '\n' ' ')
+          echo "workflow-run-ids=$run_ids" >> $GITHUB_OUTPUT
+
+      - name: Check for successful scan artifacts from previous day
+        id: check-scan-artifacts
+        if: github.event_name != 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          run_ids="${{ steps.get-completed-workflows.outputs.workflow-run-ids }}"
+          successful_security_scan_branches=""
+          successful_global_dependencies_branches=""
+          
+          echo "Checking for successful scan artifacts from workflow runs: $run_ids"
+          
+          for run_id in $run_ids; do
+            if [ -n "$run_id" ]; then
+              echo "Checking artifacts for run ID: $run_id"
               
-              # Get workflow runs for this specific workflow and branch from previous day
-              all_runs=$(gh run list --workflow="$workflow_name" --branch="$branch" --json startedAt,conclusion,headBranch --status success)
-              previous_day_runs=$(echo "$all_runs" | jq --arg start "$previous_day_start" --arg end "$previous_day_end" --arg branch "$branch" '.[] | select(.startedAt >= $start and .startedAt <= $end and .headBranch == $branch)')
+              # Get artifacts for this run
+              artifacts=$(gh run view $run_id --json artifacts --jq '.artifacts[].name')
               
-              if [ -n "$previous_day_runs" ]; then
-                echo "Skipping branch $branch - found workflow run from previous day"
+              # Check for scan-success-branch-* artifacts
+              security_scan_artifacts=$(echo "$artifacts" | grep "^scan-success-branch-" || true)
+              global_dependencies_artifacts=$(echo "$artifacts" | grep "^global-scan-success-" || true)
+              
+              # Extract branch names from artifact names
+              for artifact in $security_scan_artifacts; do
+                branch_name=$(echo "$artifact" | sed 's/scan-success-branch-files//' | sed 's/scan-success-branch-//')
+                if [ -n "$branch_name" ]; then
+                  successful_security_scan_branches="$successful_security_scan_branches $branch_name"
+                fi
+              done
+              
+              for artifact in $global_dependencies_artifacts; do
+                branch_name=$(echo "$artifact" | sed 's/global-scan-success-//')
+                if [ -n "$branch_name" ]; then
+                  successful_global_dependencies_branches="$successful_global_dependencies_branches $branch_name"
+                fi
+              done
+            fi
+          done
+          
+          # Remove duplicates and clean up
+          successful_security_scan_branches=$(echo $successful_security_scan_branches | tr ' ' '\n' | sort -u | tr '\n' ' ')
+          successful_global_dependencies_branches=$(echo $successful_global_dependencies_branches | tr ' ' '\n' | sort -u | tr '\n' ' ')
+          
+          echo "Branches with successful security scans from previous day: $successful_security_scan_branches"
+          echo "Branches with successful global dependency scans from previous day: $successful_global_dependencies_branches"
+          
+          echo "successful-security-scan-branches=$successful_security_scan_branches" >> $GITHUB_OUTPUT
+          echo "successful-global-dependencies-branches=$successful_global_dependencies_branches" >> $GITHUB_OUTPUT
+
+      - name: Determine security scan branches for scheduled runs
+        id: determine-scheduled-security-scan-branches
+        if: github.event_name != 'pull_request'
+        run: |
+          upstream_branches="${{ steps.get-upstream-branches.outputs.upstream-branches }}"
+          successful_branches="${{ steps.check-scan-artifacts.outputs.successful-security-scan-branches }}"
+          
+          branches_to_scan=""
+          
+          echo "Upstream branches: $upstream_branches"
+          echo "Successfully scanned branches from previous day: $successful_branches"
+          
+          # Check each upstream branch
+          for branch in $upstream_branches; do
+            branch=$(echo $branch | xargs) # trim whitespace
+            if [ -n "$branch" ]; then
+              # Check if this branch was successfully scanned yesterday
+              if echo "$successful_branches" | grep -q "\b$branch\b"; then
+                echo "Skipping branch $branch - found successful scan from previous day"
               else
-                echo "Adding branch $branch to scan list - no workflow runs from previous day"
+                echo "Adding branch $branch to security scan list - no successful scan from previous day"
                 branches_to_scan="$branches_to_scan $branch"
               fi
-            done
-            
-            # Clean up extra spaces and convert to JSON array format
-            branches_to_scan=$(echo $branches_to_scan | xargs)
-            if [ -n "$branches_to_scan" ]; then
-              # Convert space-separated list to JSON array (compact format)
-              json_branches=$(echo "$branches_to_scan" | tr ' ' '\n' | jq -R . | jq -s -c .)
-              echo "branches=$json_branches" >> $GITHUB_OUTPUT
-              echo "Branches to scan: $json_branches"
-            else
-              echo "branches=[]" >> $GITHUB_OUTPUT
-              echo "No branches to scan - all have workflow runs from previous day"
             fi
+          done
+          
+          # Clean up and convert to JSON array
+          branches_to_scan=$(echo $branches_to_scan | xargs)
+          if [ -n "$branches_to_scan" ]; then
+            json_branches=$(echo "$branches_to_scan" | tr ' ' '\n' | jq -R . | jq -s -c .)
+            echo "branches=$json_branches" >> $GITHUB_OUTPUT
+            echo "Security scan branches to scan: $json_branches"
+          else
+            echo "branches=[]" >> $GITHUB_OUTPUT
+            echo "No security scan branches to scan - all have successful scans from previous day"
+          fi
+
+      - name: Determine global dependencies branches for scheduled runs
+        id: determine-scheduled-global-dependencies-branches
+        if: github.event_name != 'pull_request'
+        run: |
+          upstream_branches="${{ steps.get-upstream-branches.outputs.upstream-branches }}"
+          successful_branches="${{ steps.check-scan-artifacts.outputs.successful-global-dependencies-branches }}"
+          
+          branches_to_scan=""
+          
+          echo "Upstream branches: $upstream_branches"
+          echo "Successfully scanned global dependencies branches from previous day: $successful_branches"
+          
+          # Check each upstream branch
+          for branch in $upstream_branches; do
+            branch=$(echo $branch | xargs) # trim whitespace
+            if [ -n "$branch" ]; then
+              # Check if this branch was successfully scanned yesterday
+              if echo "$successful_branches" | grep -q "\b$branch\b"; then
+                echo "Skipping branch $branch - found successful global dependencies scan from previous day"
+              else
+                echo "Adding branch $branch to global dependencies scan list - no successful scan from previous day"
+                branches_to_scan="$branches_to_scan $branch"
+              fi
+            fi
+          done
+          
+          # Clean up and convert to JSON array
+          branches_to_scan=$(echo $branches_to_scan | xargs)
+          if [ -n "$branches_to_scan" ]; then
+            json_branches=$(echo "$branches_to_scan" | tr ' ' '\n' | jq -R . | jq -s -c .)
+            echo "branches=$json_branches" >> $GITHUB_OUTPUT
+            echo "Global dependencies branches to scan: $json_branches"
+          else
+            echo "branches=[]" >> $GITHUB_OUTPUT
+            echo "No global dependencies branches to scan - all have successful scans from previous day"
           fi
 
   security-scan:
     runs-on: ubuntu-latest
     needs: [get-branches-to-scan]
-    if: needs.get-branches-to-scan.outputs.branches != '[]'
+    if: needs.get-branches-to-scan.outputs.security-scan-branches != '[]'
     environment: security-scanning-workflow-env
     permissions:
       id-token: write # Required for OIDC
     strategy:
+      fail-fast: false
       matrix:
-        target: [code-editor-sagemaker-server]
-        branch: ${{ fromJson(needs.get-branches-to-scan.outputs.branches) }}
+        target: ${{ fromJson(env.CODE_EDITOR_TARGETS) }}
+        branch: ${{ fromJson(needs.get-branches-to-scan.outputs.security-scan-branches) }}
     steps:
       - name: Assume IAM Role
         id: assume-aws-iam-role
@@ -194,6 +319,23 @@ jobs:
       - name: Analyze SBOM Scan Results
         run: |
           ./scripts/security-scan.sh analyze-results "${{ matrix.target }}" "scan_results_paths.txt"
+      
+      - name: Create Success Indicator File
+        run: |
+          # For PR events, use base_ref as output branch name, otherwise use actual branch
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            output_branch="${{ needs.get-branches-to-scan.outputs.output-branch-name }}"
+          else
+            output_branch="${{ matrix.branch }}"
+          fi
+          echo "PASS" > scan-success-${{ matrix.target }}-${output_branch}.txt
+
+      - name: Upload Success Indicator File
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-success-${{ matrix.target }}-${{ github.event_name == 'pull_request' && needs.get-branches-to-scan.outputs.output-branch-name || matrix.branch }}
+          path: scan-success-${{ matrix.target }}-${{ github.event_name == 'pull_request' && needs.get-branches-to-scan.outputs.output-branch-name || matrix.branch }}.txt
+          retention-days: 90
 
       - name: Publish Scan Successful Metric
         run: |
@@ -214,6 +356,65 @@ jobs:
             --metric-name "SecurityScanFailed" \
             --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning" \
             --value 1
+
+  generate-security-scan-output:
+    runs-on: ubuntu-latest
+    needs: [security-scan]
+    if: always()
+    steps:
+      - name: Download all scan success files
+        uses: actions/download-artifact@v4
+        with:
+          pattern: scan-success-*
+          merge-multiple: true
+      
+      - name: Check which branches were successful for all targets
+        run: |
+          # Parse targets and branches from environment variables and job outputs
+          targets_json='${{ env.CODE_EDITOR_TARGETS }}'
+          targets=($(echo "$targets_json" | jq -r '.[]'))
+          branches_json='${{ needs.security-scan.needs.get-branches-to-scan.outputs.security-scan-branches }}'
+          branches=($(echo "$branches_json" | jq -r '.[]'))
+          
+          echo "Targets to check: ${targets[@]}"
+          echo "Branches to check: ${branches[@]}"
+          
+          # Process each branch
+          for branch in "${branches[@]}"; do
+            echo "========================================="
+            echo "Checking success for branch: $branch"
+            all_success=true
+            
+            # Check if all target success files exist for this branch
+            for target in "${targets[@]}"; do
+              success_file="scan-success-${target}-${branch}.txt"
+              echo "Checking for file: $success_file"
+              
+              if [ -f "$success_file" ]; then
+                echo "✓ Found success file for target $target on branch $branch"
+              else
+                echo "✗ Missing success file for target $target on branch $branch"
+                all_success=false
+                break
+              fi
+            done
+            
+            # Create branch success file only if all targets succeeded
+            if [ "$all_success" = true ]; then
+              echo "✓ All scans successful for branch $branch - creating branch success file"
+              echo "PASS" > scan-success-branch-${branch}.txt
+            else
+              echo "✗ Some scans failed for branch $branch - not creating branch success file"
+            fi
+          done
+      
+      - name: Upload Branch Success Files
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-success-branch-files
+          path: scan-success-branch-*.txt
+          retention-days: 90
+          if-no-files-found: ignore
   
   security-scan-global-dependencies:
     runs-on: ubuntu-latest
@@ -222,8 +423,9 @@ jobs:
     permissions:
       id-token: write # Required for OIDC
     strategy:
+      fail-fast: false
       matrix:
-        branch: ${{ fromJson(needs.get-branches-to-scan.outputs.branches) }}
+        branch: ${{ fromJson(needs.get-branches-to-scan.outputs.global-dependencies-branches) }}
     steps:
       - name: Assume IAM Role
         id: assume-aws-iam-role
@@ -294,6 +496,23 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ./scripts/security-scan.sh scan-github-advisories
+      
+      - name: Create Global Success Indicator File
+        run: |
+          # For PR events, use base_ref as output branch name, otherwise use actual branch
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            output_branch="${{ needs.get-branches-to-scan.outputs.output-branch-name }}"
+          else
+            output_branch="${{ matrix.branch }}"
+          fi
+          echo "PASS" > global-scan-success-${output_branch}.txt
+
+      - name: Upload Global Success Indicator File
+        uses: actions/upload-artifact@v4
+        with:
+          name: global-scan-success-${{ github.event_name == 'pull_request' && needs.get-branches-to-scan.outputs.output-branch-name || matrix.branch }}
+          path: global-scan-success-${{ github.event_name == 'pull_request' && needs.get-branches-to-scan.outputs.output-branch-name || matrix.branch }}.txt
+          retention-days: 90
       
       - name: Publish Failure Metrics
         if: failure() && github.event_name == 'schedule'
