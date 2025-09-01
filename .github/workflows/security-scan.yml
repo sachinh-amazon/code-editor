@@ -1,4 +1,4 @@
-name: Security Scanning
+name: Security Scan
 
 env:
   CODE_EDITOR_TARGETS: '["code-editor-sagemaker-server"]'
@@ -75,21 +75,21 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           workflow_name="Security Scanning"
-          # Get previous day from 00:00 UTC to 23:59 UTC
-          previous_day_start=$(date -d 'yesterday' -u +%Y-%m-%dT00:00:00Z)
-          previous_day_end=$(date -d 'yesterday' -u +%Y-%m-%dT23:59:59Z)
+          # Get workflows from 2 hours ago onwards
+          previous_day_start=$(date -d '2 hours ago' -u +%Y-%m-%dT%H:%M:%SZ)
+          previous_day_end=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           
-          echo "Getting completed workflows from previous day: $previous_day_start to $previous_day_end"
+          echo "Getting completed workflows from 2 hours ago: $previous_day_start to $previous_day_end"
           
-          # Get all completed workflow runs from previous day
+          # Get all completed workflow runs from 2 hours ago onwards
           completed_runs=$(gh run list --workflow="$workflow_name" --json databaseId,startedAt,conclusion,headBranch --status completed --limit 100)
-          previous_day_runs=$(echo "$completed_runs" | jq --arg start "$previous_day_start" --arg end "$previous_day_end" '.[] | select(.startedAt >= $start and .startedAt <= $end)')
+          recent_runs=$(echo "$completed_runs" | jq --arg start "$previous_day_start" --arg end "$previous_day_end" '.[] | select(.startedAt >= $start and .startedAt <= $end)')
           
-          echo "Found completed workflow runs from previous day:"
-          echo "$previous_day_runs" | jq -r '.databaseId'
+          echo "Found completed workflow runs from 2 hours ago:"
+          echo "$recent_runs" | jq -r '.databaseId'
           
           # Store workflow run IDs for artifact checking
-          run_ids=$(echo "$previous_day_runs" | jq -r '.databaseId' | tr '\n' ' ')
+          run_ids=$(echo "$recent_runs" | jq -r '.databaseId' | tr '\n' ' ')
           echo "workflow-run-ids=$run_ids" >> $GITHUB_OUTPUT
 
       - name: Check for successful scan artifacts from previous day
@@ -136,8 +136,8 @@ jobs:
           successful_security_scan_branches=$(echo $successful_security_scan_branches | tr ' ' '\n' | sort -u | tr '\n' ' ')
           successful_global_dependencies_branches=$(echo $successful_global_dependencies_branches | tr ' ' '\n' | sort -u | tr '\n' ' ')
           
-          echo "Branches with successful security scans from previous day: $successful_security_scan_branches"
-          echo "Branches with successful global dependency scans from previous day: $successful_global_dependencies_branches"
+          echo "Branches with successful security scans from 2 hours ago: $successful_security_scan_branches"
+          echo "Branches with successful global dependency scans from 2 hours ago: $successful_global_dependencies_branches"
           
           echo "successful-security-scan-branches=$successful_security_scan_branches" >> $GITHUB_OUTPUT
           echo "successful-global-dependencies-branches=$successful_global_dependencies_branches" >> $GITHUB_OUTPUT
@@ -152,17 +152,17 @@ jobs:
           branches_to_scan=""
           
           echo "Upstream branches: $upstream_branches"
-          echo "Successfully scanned branches from previous day: $successful_branches"
+          echo "Successfully scanned branches from 2 hours ago: $successful_branches"
           
           # Check each upstream branch
           for branch in $upstream_branches; do
             branch=$(echo $branch | xargs) # trim whitespace
             if [ -n "$branch" ]; then
-              # Check if this branch was successfully scanned yesterday
+              # Check if this branch was successfully scanned in the last 2 hours
               if echo "$successful_branches" | grep -q "\b$branch\b"; then
-                echo "Skipping branch $branch - found successful scan from previous day"
+                echo "Skipping branch $branch - found successful scan from last 2 hours"
               else
-                echo "Adding branch $branch to security scan list - no successful scan from previous day"
+                echo "Adding branch $branch to security scan list - no successful scan from last 2 hours"
                 branches_to_scan="$branches_to_scan $branch"
               fi
             fi
@@ -176,7 +176,7 @@ jobs:
             echo "Security scan branches to scan: $json_branches"
           else
             echo "branches=[]" >> $GITHUB_OUTPUT
-            echo "No security scan branches to scan - all have successful scans from previous day"
+            echo "No security scan branches to scan - all have successful scans from last 2 hours"
           fi
 
       - name: Determine global dependencies branches for scheduled runs
@@ -189,17 +189,17 @@ jobs:
           branches_to_scan=""
           
           echo "Upstream branches: $upstream_branches"
-          echo "Successfully scanned global dependencies branches from previous day: $successful_branches"
+          echo "Successfully scanned global dependencies branches from 2 hours ago: $successful_branches"
           
           # Check each upstream branch
           for branch in $upstream_branches; do
             branch=$(echo $branch | xargs) # trim whitespace
             if [ -n "$branch" ]; then
-              # Check if this branch was successfully scanned yesterday
+              # Check if this branch was successfully scanned in the last 2 hours
               if echo "$successful_branches" | grep -q "\b$branch\b"; then
-                echo "Skipping branch $branch - found successful global dependencies scan from previous day"
+                echo "Skipping branch $branch - found successful global dependencies scan from last 2 hours"
               else
-                echo "Adding branch $branch to global dependencies scan list - no successful scan from previous day"
+                echo "Adding branch $branch to global dependencies scan list - no successful scan from last 2 hours"
                 branches_to_scan="$branches_to_scan $branch"
               fi
             fi
@@ -213,7 +213,7 @@ jobs:
             echo "Global dependencies branches to scan: $json_branches"
           else
             echo "branches=[]" >> $GITHUB_OUTPUT
-            echo "No global dependencies branches to scan - all have successful scans from previous day"
+            echo "No global dependencies branches to scan - all have successful scans from last 2 hours"
           fi
 
   security-scan:
@@ -242,7 +242,7 @@ jobs:
           aws cloudwatch put-metric-data \
             --namespace "GitHub/Workflows" \
             --metric-name "SecurityScanInvoked" \
-            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning" \
+            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScan,Target=${{ matrix.target }}" \
             --value 1
           
       - name: Checkout branch
@@ -342,7 +342,7 @@ jobs:
           aws cloudwatch put-metric-data \
             --namespace "GitHub/Workflows" \
             --metric-name "SecurityScanSuccessful" \
-            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning" \
+            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScan,Target=${{ matrix.target }}" \
             --value 1
 
       - name: Publish Failure Metrics
@@ -354,7 +354,7 @@ jobs:
           aws cloudwatch put-metric-data \
             --namespace "GitHub/Workflows" \
             --metric-name "SecurityScanFailed" \
-            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning" \
+            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScan,Target=${{ matrix.target }}" \
             --value 1
 
   generate-security-scan-output:
@@ -433,6 +433,14 @@ jobs:
           role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
           aws-region: us-east-1
           role-session-name: security-scan-global-dependencies
+      
+      - name: Publish Scan Invoked metric
+        run: |
+          aws cloudwatch put-metric-data \
+            --namespace "GitHub/Workflows" \
+            --metric-name "GlobalDependenciesSecurityScanInvoked" \
+            --dimensions "Repository=${{ github.repository }},Workflow=GlobalDependenciesSecurityScan" \
+            --value 1
           
       - name: Checkout branch
         uses: actions/checkout@v4
@@ -522,5 +530,31 @@ jobs:
           aws cloudwatch put-metric-data \
             --namespace "GitHub/Workflows" \
             --metric-name "SecurityScanFailed" \
-            --dimensions "Repository=${{ github.repository }},Workflow=SecurityScanning" \
+            --dimensions "Repository=${{ github.repository }},Workflow=GlobalDependenciesSecurityScan" \
+            --value 1
+  
+  handle-failures:
+    name: Handle Failures
+    runs-on: ubuntu-latest
+    needs: [get-branches-to-scan, generate-security-scan-output]
+    environment: security-scanning-workflow-env
+    if: failure()
+    permissions:
+      id-token: write # Required for OIDC
+    env:
+      REPOSITORY: ${{ github.repository }}
+      AWS_IAM_ROLE_ARN: ${{ secrets.AWS_IAM_ROLE_ARN }}
+    steps:
+      - name: Use role credentials for metrics
+        id: aws-creds
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_IAM_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Report failure
+        run: |
+          aws cloudwatch put-metric-data \
+            --namespace "GitHub/Workflows" \
+            --metric-name "ExecutionsFailed" \
+            --dimensions "Repository=${{ env.REPOSITORY }},Workflow=SecurityScan" \
             --value 1
