@@ -219,7 +219,7 @@ jobs:
   security-scan:
     runs-on: ubuntu-latest
     needs: [get-branches-to-scan]
-    if: needs.get-branches-to-scan.outputs.security-scan-branches != '[]'
+    if: needs.get-branches-to-scan.outputs.security-scan-branches != '[]' && needs.get-branches-to-scan.outputs.security-scan-branches != ''
     environment: security-scanning-workflow-env
     permissions:
       id-token: write # Required for OIDC
@@ -360,7 +360,7 @@ jobs:
   generate-security-scan-output:
     runs-on: ubuntu-latest
     needs: [get-branches-to-scan, security-scan]
-    if: always()
+    if: always() && needs.get-branches-to-scan.outputs.security-scan-branches != '[]' && needs.get-branches-to-scan.outputs.security-scan-branches != ''
     strategy:
       fail-fast: false
       matrix:
@@ -417,6 +417,7 @@ jobs:
   security-scan-global-dependencies:
     runs-on: ubuntu-latest
     needs: [get-branches-to-scan]
+    if: needs.get-branches-to-scan.outputs.global-dependencies-branches != '[]' && needs.get-branches-to-scan.outputs.global-dependencies-branches != ''
     environment: security-scanning-workflow-env
     permissions:
       id-token: write # Required for OIDC
