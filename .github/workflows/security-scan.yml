@@ -226,7 +226,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJson(env.CODE_EDITOR_TARGETS) }}
+        target: [code-editor-sagemaker-server]
         branch: ${{ fromJson(needs.get-branches-to-scan.outputs.security-scan-branches) }}
     steps:
       - name: Assume IAM Role
