@@ -8,12 +8,12 @@ on:
       - '*.*'
     types: [opened, reopened, synchronize]
 
-  # Trigger 2: Daily scheduled run at 22:13 UTC
+  # Trigger 2: Daily scheduled run at 00:13 UTC
   # Schedule it a random minute because most Github Actions are scheduled
   # at the start of the hour and their invocation can get delayed.
   # Ref: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule
   schedule:
-    - cron: '13 22 * * *'
+    - cron: '13 0 * * *'
   
   # Trigger 3: Manual trigger
   workflow_dispatch:
@@ -57,22 +57,24 @@ jobs:
             
             branches_to_scan=""
             workflow_name="Security Scanning"
-            since_date=$(date -d '24 hours ago' -u +%Y-%m-%dT%H:%M:%SZ)
+            # Get previous day from 00:00 UTC to 23:59 UTC
+            previous_day_start=$(date -d 'yesterday' -u +%Y-%m-%dT00:00:00Z)
+            previous_day_end=$(date -d 'yesterday' -u +%Y-%m-%dT23:59:59Z)
             
-            echo "Checking for workflow runs since: $since_date"
+            echo "Checking for workflow runs from previous day: $previous_day_start to $previous_day_end"
             
             # Check each branch for recent workflow runs
             for branch in $branches; do
               echo "Checking branch: $branch"
               
-              # Get recent workflow runs for this specific workflow and branch
+              # Get workflow runs for this specific workflow and branch from previous day
               all_runs=$(gh run list --workflow="$workflow_name" --branch="$branch" --json startedAt,conclusion,headBranch --status success)
-              recent_runs=$(echo "$all_runs" | jq --arg since "$since_date" --arg branch "$branch" '.[] | select(.startedAt > $since and .headBranch == $branch)')
+              previous_day_runs=$(echo "$all_runs" | jq --arg start "$previous_day_start" --arg end "$previous_day_end" --arg branch "$branch" '.[] | select(.startedAt >= $start and .startedAt <= $end and .headBranch == $branch)')
               
-              if [ -n "$recent_runs" ]; then
-                echo "Skipping branch $branch - found recent workflow run in the last 24 hours"
+              if [ -n "$previous_day_runs" ]; then
+                echo "Skipping branch $branch - found workflow run from previous day"
               else
-                echo "Adding branch $branch to scan list - no recent workflow runs"
+                echo "Adding branch $branch to scan list - no workflow runs from previous day"
                 branches_to_scan="$branches_to_scan $branch"
               fi
             done
@@ -86,7 +88,7 @@ jobs:
               echo "Branches to scan: $json_branches"
             else
               echo "branches=[]" >> $GITHUB_OUTPUT
-              echo "No branches to scan - all have recent workflow runs"
+              echo "No branches to scan - all have workflow runs from previous day"
             fi
           fi
 
