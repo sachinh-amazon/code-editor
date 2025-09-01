@@ -253,6 +253,11 @@ jobs:
 
       - name: Update security scan script from main
         run: |
+          # Check if this is branch 3.1
+          if [ "${{ matrix.branch }}" = "3.1" ]; then
+            echo "Hi!"
+          fi
+          
           # Older branches may not have the latest versions of the
           # security scan scripts. So we download the latest one from main
           echo "Downloading latest security-scan.sh script from main branch"
@@ -457,6 +462,11 @@ jobs:
 
       - name: Update security scan script from main
         run: |
+          # Check if this is branch 3.1
+          if [ "${{ matrix.branch }}" = "3.1" ]; then
+            echo "Hi!"
+          fi
+          
           # Older branches may not have the latest versions of the
           # security scan scripts. So we download the latest one from main
           echo "Downloading latest security-scan.sh script from main branch"
