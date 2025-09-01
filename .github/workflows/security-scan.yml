@@ -469,11 +469,10 @@ jobs:
           npm i -g @cyclonedx/cyclonedx-npm
 
           echo "Installing OSS Attribution Generator"
-          oss_attribution_version=$(cat config/pinned-versions/oss-attribution-generator-version.txt)
-          npm i -g @electrovir/oss-attribution-generator@$oss_attribution_version
+          source .packageversionrc
+          npm i -g @electrovir/oss-attribution-generator@$oss_attribution_generator_version
 
           echo "Installing semver"
-          semver_version=$(cat config/pinned-versions/semver-version.txt)
           npm i -g semver@$semver_version
           
           echo "Installing Syft for SBOM generation"
