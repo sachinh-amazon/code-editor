@@ -82,14 +82,14 @@ jobs:
           echo "Getting completed workflows from previous day: $previous_day_start to $previous_day_end"
           
           # Get all completed workflow runs from previous day
-          completed_runs=$(gh run list --workflow="$workflow_name" --json id,startedAt,conclusion,headBranch --status completed --limit 100)
+          completed_runs=$(gh run list --workflow="$workflow_name" --json databaseId,startedAt,conclusion,headBranch --status completed --limit 100)
           previous_day_runs=$(echo "$completed_runs" | jq --arg start "$previous_day_start" --arg end "$previous_day_end" '.[] | select(.startedAt >= $start and .startedAt <= $end)')
           
           echo "Found completed workflow runs from previous day:"
-          echo "$previous_day_runs" | jq -r '.id'
+          echo "$previous_day_runs" | jq -r '.databaseId'
           
           # Store workflow run IDs for artifact checking
-          run_ids=$(echo "$previous_day_runs" | jq -r '.id' | tr '\n' ' ')
+          run_ids=$(echo "$previous_day_runs" | jq -r '.databaseId' | tr '\n' ' ')
           echo "workflow-run-ids=$run_ids" >> $GITHUB_OUTPUT
 
       - name: Check for successful scan artifacts from previous day
@@ -109,7 +109,7 @@ jobs:
               echo "Checking artifacts for run ID: $run_id"
               
               # Get artifacts for this run
-              artifacts=$(gh run view $run_id --json artifacts --jq '.artifacts[].name')
+              artifacts=$(gh api /repos/${{ github.repository }}/actions/runs/$run_id/artifacts --jq '.artifacts[].name')
               
               # Check for scan-success-branch-* artifacts
               security_scan_artifacts=$(echo "$artifacts" | grep "^scan-success-branch-" || true)
