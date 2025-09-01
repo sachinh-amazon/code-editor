@@ -377,21 +377,28 @@ jobs:
           # Parse targets from environment variable
           targets_json='${{ env.CODE_EDITOR_TARGETS }}'
           targets=($(echo "$targets_json" | jq -r '.[]'))
-          branch="${{ matrix.branch }}"
+          
+          # For PR events, use base_ref as output branch name, otherwise use actual branch
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            check_branch="${{ needs.get-branches-to-scan.outputs.output-branch-name }}"
+          else
+            check_branch="${{ matrix.branch }}"
+          fi
+          
           all_success=true
           
-          echo "Checking success for branch: $branch"
+          echo "Checking success for branch: $check_branch (matrix branch: ${{ matrix.branch }})"
           echo "Targets to check: ${targets[@]}"
           
           # Check if all target success files exist for this branch
           for target in "${targets[@]}"; do
-            success_file="scan-success-${target}-${branch}.txt"
+            success_file="scan-success-${target}-${check_branch}.txt"
             echo "Checking for file: $success_file"
             
             if [ -f "$success_file" ]; then
-              echo "✓ Found success file for target $target on branch $branch"
+              echo "✓ Found success file for target $target on branch $check_branch"
             else
-              echo "✗ Missing success file for target $target on branch $branch"
+              echo "✗ Missing success file for target $target on branch $check_branch"
               all_success=false
               break
             fi
@@ -399,10 +406,10 @@ jobs:
           
           # Create branch success file only if all targets succeeded
           if [ "$all_success" = true ]; then
-            echo "✓ All scans successful for branch $branch - creating branch success file"
-            echo "PASS" > scan-success-branch-${branch}.txt
+            echo "✓ All scans successful for branch $check_branch - creating branch success file"
+            echo "PASS" > scan-success-branch-${check_branch}.txt
           else
-            echo "✗ Some scans failed for branch $branch - not creating branch success file"
+            echo "✗ Some scans failed for branch $check_branch - not creating branch success file"
             exit 1
           fi
       
@@ -410,8 +417,8 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: scan-success-branch-${{ matrix.branch }}
-          path: scan-success-branch-${{ matrix.branch }}.txt
+          name: scan-success-branch-${{ github.event_name == 'pull_request' && needs.get-branches-to-scan.outputs.output-branch-name || matrix.branch }}
+          path: scan-success-branch-${{ github.event_name == 'pull_request' && needs.get-branches-to-scan.outputs.output-branch-name || matrix.branch }}.txt
           retention-days: 90
   
   security-scan-global-dependencies:
