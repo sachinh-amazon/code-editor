@@ -250,6 +250,11 @@ jobs:
         with:
           ref: ${{ matrix.branch }}
           submodules: recursive
+      
+      - name: Make sure changes from the PR branch are visible
+        run: |
+          ls -la
+          cat .github/workflows/build-targets.yaml
 
       - name: Update security scan script from main
         run: |
