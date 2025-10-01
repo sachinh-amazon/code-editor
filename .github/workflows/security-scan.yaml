@@ -255,6 +255,7 @@ jobs:
         run: |
           ls -la
           cat .github/workflows/build-targets.yaml
+          echo "Getting a PR out!"
 
       - name: Update security scan script from main
         run: |
