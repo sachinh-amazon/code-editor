@@ -1,0 +1,16 @@
+name: Test workflow
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+
+jobs:
+  get-branches-to-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine branches for PR events
+        id: determine-pr-branches
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "Workflow invoked!!"
