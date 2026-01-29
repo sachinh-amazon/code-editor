@@ -15,25 +15,26 @@ We use major.minor branches (e.g., `1.0`, `1.1`, `2.1`) for releases.
 
 ### Release Process
 
-1. **Determine versions**:
-   - **Code Editor version**: Choose tag name based on the commit's branch
-     - Tag format: `major.minor.patch` matching the branch the commit belongs to
-     - Example: Commit on `1.0` branch → tag `1.0.0`, `1.0.1`, etc.
-   - **SageMaker Code Editor version**: Determine the corresponding SageMaker version
-     - Example: Code Editor `1.0.1` → SageMaker Code Editor `1.8.0b7`
+1. **Determine Code Editor Version**: Choose tag name based on the commit's branch
+   - Tag format: `major.minor.patch` matching the branch the commit belongs to
+   - Example: Commit on `1.0` branch → tag `1.0.0`, `1.0.1`, etc.
+   - Pre-release candidates have a tag suffix as `rc.{release_candidate_version}`. For example `1.0.4-rc.1` or `1.0.4-rc.2`.
 
-2. **Create release**:
-   - Go to **Actions** → **Create release** → **Run workflow**
-   - Select the branch you want to release from (e.g., `1.0`)
-   - Enter:
-     - **Code Editor version**: `1.0.1` (semantic version x.y.z or x.y.z-rc.N.)
-     - **SageMaker Code Editor version**: `1.8.0b7` (any format)
-   - Click **Run workflow**
+2. **Determine SageMaker Code Editor Version**: 
+   - Get in touch with the SageMaker team to decide what SageMaker version needs to be used for the latest release.
+   - Hard-code that version in the patch `patches/sagemaker/display-both-versions-in-about.diff` in `product.json`.
+
+
+3. **Create release**:
+   - **Command line**: Push tag to trigger release workflow
+     ```bash
+     git tag 1.0.0
+     git push origin 1.0.0
+     ```
    - The workflow will:
-     - Create tag on the current commit
      - Fetch build artifacts for that commit
-     - Inject both versions into product.json
-     - Create GitHub release with both tarballs
+     - Inject Code Editor version from the release tag into product.json
+     - Create GitHub release
 
-3. **Release notes**: Include code-oss version and Sagemaker Code Editor Version information in the release description
+4. **Release notes**: Include code-oss version and Sagemaker Code Editor Version information in the release description. Release description can be edited once the release workflow creates the release. 
 
