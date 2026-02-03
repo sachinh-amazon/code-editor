@@ -18,7 +18,6 @@ common/build.diff
 common/integration.diff
 common/replace-gulp-untar.diff
 common/fix-ts-rootdir-webpack.diff
-common/adopt-new-proxy-agent.diff
 web-server/suppress-known-errors-build-integration.diff
 web-server/local-storage.diff
 web-server/base-path.diff
@@ -42,4 +41,5 @@ sagemaker/sagemaker-extension-smus-support.diff
 sagemaker/post-startup-notifications.diff
 sagemaker/sagemaker-extensions-sync.diff
 sagemaker/fix-port-forwarding.diff
+sagemaker/display-both-versions-in-about.diff
 sagemaker/validate-http-request-referer.diff
