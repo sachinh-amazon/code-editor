@@ -113,6 +113,7 @@ build() {
     cd "$build_src_dir"
     env \
         NODE_OPTIONS="--max-old-space-size=${max_space_size_mb}" \
+        DISABLE_MANGLE=true \
         npm run gulp "$build_target"
     cd ..
 }
